@@ -1,0 +1,7 @@
+mysql_root_password: "{{ lookup('env', 'MYSQL_ROOT_PASSWORD') | default('change-me-mysql-root', true) }}"
+mysql_container_name: mysql
+mysql_image: mysql:8.0
+mysql_host_port: 3306
+mysql_container_port: 3306
+mysql_root_host: "%"
+mysql_database: app_db

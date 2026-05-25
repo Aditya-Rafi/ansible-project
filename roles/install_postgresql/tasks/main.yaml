@@ -1,0 +1,28 @@
+- name: Install Postgresql
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+    state: latest
+    update_cache: yes
+    cache_valid_time: 3600
+  register: apt_res
+  until: apt_res is success
+  retries: 5
+  delay: 10
+
+- name: Start postgresql service
+  systemd:
+    name: postgresql.service
+    state: started
+    enabled: yes
+
+- name: Verify postgresql version
+  command: sudo -u postgres psql -c "SELECT version();"
+  register: pg_version
+  changed_when: false
+
+- name: show postgresql version
+  debug:
+    var: pg_version.stdout_lines

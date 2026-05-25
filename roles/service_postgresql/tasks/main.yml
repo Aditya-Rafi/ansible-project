@@ -1,0 +1,33 @@
+- name: Start PostgreSQL service
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+  tags: [start]
+  when:
+    - not ansible_check_mode
+    - ansible_run_tags | length == 0 or 'start' in ansible_run_tags
+
+- name: Stop PostgreSQL service
+  service:
+    name: postgresql
+    state: stopped  
+    enabled: yes
+  tags: [stop]
+  when: not ansible_check_mode
+
+- name: Restart PostgreSQL service
+  service:
+    name: postgresql
+    state: restarted
+    enabled: yes
+  tags: [restart]
+  when: not ansible_check_mode
+
+- name: Reload PostgreSQL service
+  service:
+    name: postgresql
+    state: reloaded
+    enabled: yes
+  tags: [reload]
+  when: not ansible_check_mode

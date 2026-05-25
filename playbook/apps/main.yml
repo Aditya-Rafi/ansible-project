@@ -1,0 +1,20 @@
+- name: Install config
+  hosts: dev-apps
+  become: yes
+  roles:
+    - install_nginx
+
+- name: Apps config
+  hosts: dev-apps
+  become: yes
+  roles:
+    - config_nginx
+    - keepalived
+
+- name: Service config
+  hosts: dev-apps
+  become: yes
+  roles:
+    - service_nginx
+
+  

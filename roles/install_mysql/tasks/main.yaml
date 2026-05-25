@@ -1,0 +1,27 @@
+- name: Install Docker Python dependency
+  apt:
+    name:
+      - python3-docker
+    state: present
+    update_cache: yes
+
+- name: Pull MySQL Docker image
+  community.docker.docker_image:
+    name: "{{ mysql_image }}"
+    source: pull
+
+- name: Run MySQL container
+  community.docker.docker_container:
+    name: "{{ mysql_container_name }}"
+    image: "{{ mysql_image }}"
+    state: started
+    restart_policy: unless-stopped
+    env:
+      MYSQL_ROOT_PASSWORD: "{{ mysql_root_password }}"
+      MYSQL_ROOT_HOST: "{{ mysql_root_host }}"
+      MYSQL_DATABASE: "{{ mysql_database }}"
+    published_ports:
+      - "{{ mysql_host_port }}:{{ mysql_container_port }}"
+    volumes:
+      - mysql_data:/var/lib/mysql
+  when: not ansible_check_mode

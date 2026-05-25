@@ -1,0 +1,6 @@
+- name: restart mysql
+  community.docker.docker_container:
+    name: "{{ mysql_container_name }}"
+    state: started
+    restart: true
+  when: not ansible_check_mode

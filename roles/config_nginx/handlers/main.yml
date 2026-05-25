@@ -1,0 +1,12 @@
+- name: validate nginx configuration
+  command: nginx -t
+  changed_when: false
+  listen: reload nginx
+  when: not ansible_check_mode
+
+- name: reload nginx service
+  systemd:
+    name: nginx
+    state: reloaded
+  listen: reload nginx
+  when: not ansible_check_mode

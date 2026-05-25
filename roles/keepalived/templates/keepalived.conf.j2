@@ -1,0 +1,42 @@
+global_defs {
+  enable_script_security
+  script_user root
+}
+
+vrrp_script chk_nginx {
+  script "/usr/bin/systemctl is-active --quiet nginx"
+  interval 2
+  fall 2
+  rise 2
+}
+
+vrrp_instance VI_{{ keepalived_router_id | default(51) }} {
+  state {{ keepalived_state | default('BACKUP') }}
+  interface {{ keepalived_interface | default('eth0') }}
+  virtual_router_id {{ keepalived_router_id | default(51) }}
+  priority {{ keepalived_priority | default(100) }}
+  advert_int {{ keepalived_advert_interval | default(1) }}
+{% if keepalived_src_ip is defined %}
+  unicast_src_ip {{ keepalived_src_ip }}
+{% endif %}
+{% if keepalived_peer_ips is defined and keepalived_peer_ips | length > 0 %}
+  unicast_peer {
+{% for peer in keepalived_peer_ips %}
+    {{ peer }}
+{% endfor %}
+  }
+{% endif %}
+
+  authentication {
+    auth_type PASS
+    auth_pass {{ keepalived_auth_pass }}
+  }
+
+  virtual_ipaddress {
+    {{ keepalived_virtual_ip }}
+  }
+
+  track_script {
+    chk_nginx
+  }
+}

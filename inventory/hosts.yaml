@@ -1,0 +1,16 @@
+all:
+  children:
+    app_server:
+      hosts:
+        dev-apps:
+          ansible_host: 192.0.2.10
+          ansible_port: 22
+          ansible_user: "{{ lookup('env', 'ANSIBLE_USER') | default('root', true) }}"
+          ansible_python_interpreter: /usr/bin/python3
+    db_server:
+      hosts:
+        dev-db:
+          ansible_host: 192.0.2.20
+          ansible_port: 22
+          ansible_user: "{{ lookup('env', 'ANSIBLE_USER') | default('root', true) }}"
+          ansible_python_interpreter: /usr/bin/python3

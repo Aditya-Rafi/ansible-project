@@ -1,0 +1,17 @@
+- name: Install config
+  hosts: dev-db
+  become: yes
+  roles:
+    - install_mysql
+
+- name: Apps config
+  hosts: dev-db
+  become: yes
+  roles:
+    - config_mysql
+
+- name: Service config
+  hosts: dev-db
+  become: yes
+  roles:
+    - service_mysql

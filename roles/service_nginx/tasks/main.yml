@@ -1,0 +1,33 @@
+- name : Start nginx service
+  systemd:
+    name: nginx
+    state: started
+    enabled: yes
+  tags: [start]
+  when:
+    - not ansible_check_mode
+    - ansible_run_tags | length == 0 or 'start' in ansible_run_tags
+
+- name : Stop nginx service
+  systemd:
+    name: nginx
+    state: stopped
+    enabled: yes
+  tags: [stop]
+  when: not ansible_check_mode
+
+- name : Restart nginx service
+  systemd:
+    name: nginx
+    state: restarted
+    enabled: yes
+  tags: [restart]
+  when: not ansible_check_mode
+
+- name : Reload nginx service
+  systemd:
+    name: nginx
+    state: reloaded
+    enabled: yes
+  tags: [reload]
+  when: not ansible_check_mode
