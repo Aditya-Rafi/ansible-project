@@ -1,0 +1,57 @@
+- name: "find latest backup for {{ db_name }}"
+  find:
+    paths: /opt/backups/mysql/
+    patterns: "backup-{{ db_name }}-*.sql"
+    file_type: file
+  register: backup_files
+
+- name: "assert backup file exists for {{ db_name }}"
+  assert:
+    that:
+      - backup_files.files | length > 0
+    fail_msg: "No backup file found for database {{ db_name }} in /opt/backups/mysql/"
+
+- name: "get latest backup filepath for {{ db_name }}"
+  set_fact:
+    latest_backup_file: "{{ (backup_files.files | sort(attribute='mtime') | last).path }}"
+
+- name: "display backup file to verify"
+  debug:
+    msg: "Verifying backup file: {{ latest_backup_file }}"
+
+- name: "create temporary database inside Docker: {{ db_name }}"
+  shell: |
+    docker exec temp-mysql-restore mysql -uroot -h 127.0.0.1 -e "CREATE DATABASE IF NOT EXISTS \`{{ db_name }}\`"
+  become: true
+  register: create_db_res
+  until: create_db_res.rc == 0
+  retries: 15
+  delay: 3
+
+- name: "import backup for {{ db_name }} into Docker MySQL"
+  shell: |
+    docker exec -i temp-mysql-restore mysql -uroot -h 127.0.0.1 {{ db_name | quote }} < {{ latest_backup_file | quote }}
+  become: true
+  register: import_db_res
+  until: import_db_res.rc == 0
+  retries: 10
+  delay: 3
+
+- name: "verify 1:1 database integrity for {{ db_name }}"
+  shell: |
+    /tmp/verify_mysql_integrity.py \
+      --orig-host {{ mysql_host | quote }} \
+      --orig-port {{ mysql_port | default(3306) | string | quote }} \
+      --orig-user {{ mysql_username | quote }} \
+      --orig-password {{ mysql_password | quote }} \
+      --orig-db {{ db_name | quote }} \
+      --dest-host "127.0.0.1" \
+      --dest-port 3309 \
+      --dest-user "root" \
+      --dest-password "" \
+      --dest-db {{ db_name | quote }}
+  register: verify_result
+
+- name: "display verification result for {{ db_name }}"
+  debug:
+    msg: "{{ verify_result.stdout_lines }}"

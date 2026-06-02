@@ -1,0 +1,5 @@
+- name: Semaphore Service
+  hosts: control_nodes
+  become: yes
+  roles:
+    - role: semaphore_service

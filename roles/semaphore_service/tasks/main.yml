@@ -1,0 +1,13 @@
+- name: Restart Semaphore and DB
+  command:
+    cmd: "docker compose restart semaphore db"
+    chdir: "{{ ansible_env.HOME }}/project_ansible"
+  tags: [restart]
+  when: "'restart' in ansible_run_tags"
+
+- name: Reconfig Provisioner
+  command:
+    cmd: "docker compose restart provisioner"
+    chdir: "{{ ansible_env.HOME }}/project_ansible"
+  tags: [reconfig]
+  when: "'reconfig' in ansible_run_tags"

@@ -1,0 +1,5 @@
+- name: Setup Semaphore
+  hosts: control_nodes
+  become: yes
+  roles:
+    - role: semaphore_setup

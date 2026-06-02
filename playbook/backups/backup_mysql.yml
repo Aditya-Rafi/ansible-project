@@ -1,0 +1,8 @@
+- name: Backup MySQL databases
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: backup_mysql
+      when:
+        - "database_server | default('') == 'mysql'"
+        - "enable_backup | default(false) | bool"

@@ -1,0 +1,8 @@
+- name: Verify MySQL backups 1:1 integrity
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: restore_verify_mysql
+      when:
+        - "database_server | default('') == 'mysql'"
+        - "enable_backup | default(false) | bool"

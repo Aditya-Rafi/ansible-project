@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  semaphore:
+    image: semaphoreui/semaphore:latest
+    container_name: semaphore
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env.semaphore
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - db
+    restart: unless-stopped
+    volumes:
+      - semaphore_data:/var/lib/semaphore
+      - .:/home/semaphore/ansible
+
+  db:
+    image: postgres:14
+    container_name: semaphore-db
+    env_file:
+      - .env.semaphore
+    restart: unless-stopped
+    volumes:
+      - semaphore_db:/var/lib/postgresql/data
+
+  provisioner:
+    image: python:3-alpine
+    container_name: semaphore-provisioner
+    env_file:
+      - .env.semaphore
+      - .env.vault
+    volumes:
+      - ./provision:/provision:ro
+      - .:/home/semaphore/ansible:ro
+    depends_on:
+      - semaphore
+    command: python /provision/provision-semaphore.py
+
+volumes:
+  semaphore_data:
+  semaphore_db:

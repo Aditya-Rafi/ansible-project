@@ -1,0 +1,40 @@
+- name: Install git
+  apt:
+    name: git
+    state: present
+    update_cache: yes
+
+- name: Create project directory
+  file:
+    path: "{{ ansible_env.HOME }}/project_ansible"
+    state: directory
+    mode: '0755'
+
+- name: Clone Semaphore project repository
+  git:
+    repo: "https://github.com/ersaazis/project_ansible"
+    dest: "{{ ansible_env.HOME }}/project_ansible"
+    force: yes
+
+- name: Template .env.semaphore
+  template:
+    src: "{{ role_path }}/templates/.env.semaphore.j2"
+    dest: "{{ ansible_env.HOME }}/project_ansible/.env.semaphore"
+    mode: '0600'
+
+- name: Template .env.vault
+  template:
+    src: "{{ role_path }}/templates/.env.vault.j2"
+    dest: "{{ ansible_env.HOME }}/project_ansible/.env.vault"
+    mode: '0600'
+
+- name: Docker Compose - Set lifecycle action
+  set_fact:
+    docker_action: "{{ action | default('up') }}"
+
+- name: Run Docker Compose
+  command:
+    cmd: "docker compose -f docker-compose.yml {{ 'up -d' if docker_action == 'up' else docker_action }}"
+    chdir: "{{ ansible_env.HOME }}/project_ansible"
+  register: compose_output
+  changed_when: "'Running' in compose_output.stdout or 'Started' in compose_output.stdout or 'Stopped' in compose_output.stdout or 'Restarted' in compose_output.stdout"

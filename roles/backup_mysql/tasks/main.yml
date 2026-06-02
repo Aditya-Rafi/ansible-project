@@ -1,0 +1,74 @@
+- name : create backup directory
+  become: true
+  become_user: root
+  file:
+    path: /opt/backups/mysql
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
+- name: ensure mysqldump is installed
+  become: true
+  become_user: root
+  package:
+    name: default-mysql-client
+    state: present
+
+- name: backup mysql database
+  shell: |
+    set -o pipefail
+    backup_file="/opt/backups/mysql/backup-{{ item }}-{{ lookup('pipe', 'date +%Y-%m-%dT%H-%M-%S') }}.sql"
+    tmp_file="$(mktemp /opt/backups/mysql/backup-{{ item }}-XXXXXX)"
+    err_file="${tmp_file}.err"
+
+    mysqldump \
+      "{{ item }}" \
+      --single-transaction \
+      --skip-lock-tables \
+      --quick \
+      --force \
+      --column-statistics=0 \
+      --host={{ mysql_host | quote }} \
+      --port={{ mysql_port | default(3306) | string | quote }} \
+      --user={{ mysql_username | quote }} \
+      --result-file="$tmp_file" 2> "$err_file"
+    rc=$?
+
+    if [ -s "$tmp_file" ]; then
+      mv "$tmp_file" "$backup_file"
+      if [ -s "$err_file" ]; then
+        mv "$err_file" "${backup_file}.err"
+        echo "Backup created with mysqldump warnings: ${backup_file}.err"
+      else
+        rm -f "$err_file"
+      fi
+      exit 0
+    fi
+
+    cat "$err_file" >&2
+    rm -f "$tmp_file" "$err_file"
+    exit "$rc"
+  args:
+    executable: /bin/bash
+  no_log: false
+  environment:
+    MYSQL_PWD: "{{ mysql_password }}"
+  loop: "{{ (mysql_databases.split(',') if mysql_databases is string and ',' in mysql_databases else [mysql_databases]) if mysql_databases is string else mysql_databases }}"
+
+- name: remove old backups
+  become: true
+  become_user: root
+  find:
+    paths: /opt/backups/mysql
+    age: 7d
+    recurse: yes
+  register: old_backups
+
+- name: delete old backups
+  become: true
+  become_user: root
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_backups.files }}"

@@ -1,3 +1,27 @@
-- name: Placeholder for Apache installation
-  debug:
-    msg: "Role install_apache belum digunakan. Keepalived HA ada di role keepalived."
+- name : install Keepalived
+  apt:
+    name: keepalived
+    state: present
+    update_cache: yes
+
+- name : Enable non-local bind for VRRP virtual IP
+  sysctl:
+    name: net.ipv4.ip_nonlocal_bind
+    value: '1'
+    state: present
+    reload: yes
+
+- name : Configure Keepalived
+  template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart keepalived
+
+- name : Start Keepalived
+  systemd:
+    name: keepalived
+    state: started
+    enabled: yes

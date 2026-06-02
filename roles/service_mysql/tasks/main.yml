@@ -1,29 +1,28 @@
-- name: Start MySQL container
-  community.docker.docker_container:
-    name: "{{ mysql_container_name }}"
-    image: "{{ mysql_image }}"
+- name: Start MySQL service
+  service:
+    name: mysql
     state: started
-    restart_policy: unless-stopped
+    enabled: yes
   tags: [start]
-  when:
-    - not ansible_check_mode
-    - ansible_run_tags | length == 0 or 'start' in ansible_run_tags
+  when: ansible_run_tags | length == 0 or 'start' in ansible_run_tags
 
-- name: Stop MySQL container
-  community.docker.docker_container:
-    name: "{{ mysql_container_name }}"
+- name: Stop MySQL service
+  service:
+    name: mysql
     state: stopped
+    enabled: yes
   tags: [stop]
-  when: not ansible_check_mode
 
-- name: Restart MySQL container
-  command: "docker restart {{ mysql_container_name }}"
-  changed_when: true
+- name: Restart MySQL service
+  service:
+    name: mysql
+    state: restarted
+    enabled: yes
   tags: [restart]
-  when: not ansible_check_mode
 
-- name: Reload MySQL container
-  command: "docker kill --signal=HUP {{ mysql_container_name }}"
-  changed_when: true
+- name: Reload MySQL service
+  service:
+    name: mysql
+    state: reloaded
+    enabled: yes
   tags: [reload]
-  when: not ansible_check_mode

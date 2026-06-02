@@ -26,6 +26,7 @@ Thumbs.db
 *.secret
 *.secrets
 .env
+vault.yml
 inventory/*vault*
 inventory/*secret*
 inventory/local*
