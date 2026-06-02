@@ -1,5 +1,6 @@
 # Example Vault File
-# Copy this file to inventory/group_vars/all/vault.yml and fill in the actual production credentials.
+# Copy this file to inventory/group_vars/all/vault.yml and fill in the actual credentials.
 # Note: Any files containing "vault" under inventory/ are ignored by git to prevent security leaks.
 
-vault_mysql_password: "UOTZVLtSQa55fDur0Xj2supB9R8wPB"
+vault_ansible_password: "YOUR_ANSIBLE_SSH_PASSWORD"
+vault_mysql_password: "YOUR_MYSQL_BACKUP_PASSWORD"
