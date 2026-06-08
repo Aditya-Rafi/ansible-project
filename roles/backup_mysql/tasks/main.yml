@@ -15,15 +15,15 @@
     name: default-mysql-client
     state: present
 
-- name: backup mysql database
+- name: backup mysql databases
   shell: |
     set -o pipefail
-    backup_file="/opt/backups/mysql/backup-{{ item }}-{{ lookup('pipe', 'date +%Y-%m-%dT%H-%M-%S') }}.sql"
-    tmp_file="$(mktemp /opt/backups/mysql/backup-{{ item }}-XXXXXX)"
+    backup_file="/opt/backups/mysql/backup-{{{ mysql_databases | join(' ') } { lookup('pipe', 'date +%Y-%m-%dT%H-%M-%S') }.sql"
+    tmp_file="$(mktemp /opt/backups/mysql/backup-XXXXXX.sql)"
     err_file="${tmp_file}.err"
 
     mysqldump \
-      "{{ item }}" \
+      {{ mysql_databases | join(' ') }} \
       --single-transaction \
       --skip-lock-tables \
       --quick \
@@ -40,8 +40,6 @@
       if [ -s "$err_file" ]; then
         mv "$err_file" "${backup_file}.err"
         echo "Backup created with mysqldump warnings: ${backup_file}.err"
-      else
-        rm -f "$err_file"
       fi
       exit 0
     fi
@@ -54,7 +52,6 @@
   no_log: false
   environment:
     MYSQL_PWD: "{{ mysql_password }}"
-  loop: "{{ (mysql_databases.split(',') if mysql_databases is string and ',' in mysql_databases else [mysql_databases]) if mysql_databases is string else mysql_databases }}"
 
 - name: remove old backups
   become: true
