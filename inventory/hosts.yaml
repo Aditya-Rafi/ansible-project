@@ -23,4 +23,4 @@ all:
           mysql_port: 3308
           mysql_username: "backup"
           mysql_password: "UOTZVLtSQa55fDur0Xj2supB9R8wPB"
-          mysql_databases: mitra_traildb 
+          mysql_databases: mitra_trialdb,agrinis_regiondb
