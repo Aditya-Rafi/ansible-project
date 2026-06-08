@@ -1,0 +1,8 @@
+- name: Restore MySQL databases from backup
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: restore_mysql
+      when:
+        - "database_server | default('') == 'mysql'"
+        - "enable_backup | default(false) | bool"

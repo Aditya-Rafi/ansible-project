@@ -51,7 +51,15 @@
       --dest-password "" \
       --dest-db {{ db_name | quote }}
   register: verify_result
+  failed_when: verify_result.rc not in [0, 1, 2]
 
 - name: "display verification result for {{ db_name }}"
   debug:
     msg: "{{ verify_result.stdout_lines }}"
+
+- name: "assert backup integrity for {{ db_name }}"
+  assert:
+    that:
+      - verify_result.rc == 0
+    fail_msg: "Verifikasi backup GAGAL: isi backup tidak cocok 1:1 dengan database sumber '{{ db_name }}'"
+    success_msg: "Verifikasi backup BERHASIL: backup '{{ db_name }}' cocok 100% dengan database sumber"

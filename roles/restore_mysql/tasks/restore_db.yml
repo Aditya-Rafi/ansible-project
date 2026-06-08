@@ -1,0 +1,69 @@
+- name: "find backup files for {{ _db }}"
+  find:
+    paths: /opt/backups/mysql/
+    patterns: "backup-{{ _db }}-*.sql"
+    file_type: file
+  register: _db_backups
+
+- name: "assert backup exists for {{ _db }}"
+  assert:
+    that:
+      - _db_backups.files | length > 0
+    fail_msg: "Tidak ada file backup untuk database {{ _db }} di /opt/backups/mysql/"
+
+- name: "set backup file to use for {{ _db }}"
+  set_fact:
+    _restore_file: >-
+      {{
+        restore_backup_file
+        if restore_backup_file
+        else (_db_backups.files | sort(attribute='mtime') | last).path
+      }}
+
+- name: "display restore plan for {{ _db }}"
+  debug:
+    msg:
+      - "Database    : {{ _db }}"
+      - "Backup file : {{ _restore_file }}"
+      - "Target      : {{ restore_target_host }}:{{ restore_target_port }}"
+      - "Drop first  : {{ restore_drop_db }}"
+
+- name: "drop database {{ _db }} before restore"
+  shell: |
+    mysql \
+      -h {{ restore_target_host | quote }} \
+      -P {{ restore_target_port | string | quote }} \
+      -u {{ restore_target_user | quote }} \
+      -e "DROP DATABASE IF EXISTS \`{{ _db }}\`;"
+  environment:
+    MYSQL_PWD: "{{ restore_target_password }}"
+  when: restore_drop_db
+
+- name: "create database {{ _db }}"
+  shell: |
+    mysql \
+      -h {{ restore_target_host | quote }} \
+      -P {{ restore_target_port | string | quote }} \
+      -u {{ restore_target_user | quote }} \
+      -e "CREATE DATABASE \`{{ _db }}\`;"
+  environment:
+    MYSQL_PWD: "{{ restore_target_password }}"
+
+- name: "restore {{ _restore_file }} into {{ _db }}"
+  shell: |
+    mysql \
+      -h {{ restore_target_host | quote }} \
+      -P {{ restore_target_port | string | quote }} \
+      -u {{ restore_target_user | quote }} \
+      {{ _db | quote }} < {{ _restore_file | quote }}
+  environment:
+    MYSQL_PWD: "{{ restore_target_password }}"
+  register: _restore_result
+
+- name: "restore complete for {{ _db }}"
+  debug:
+    msg: "Restore selesai: {{ _restore_file }} → database '{{ _db }}'"
+
+- name: "run post-restore verification for {{ _db }}"
+  include_tasks: verify_restore.yml
+  when: restore_run_verify | bool

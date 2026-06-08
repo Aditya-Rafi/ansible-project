@@ -1,0 +1,20 @@
+- name: normalize mysql_databases to list
+  set_fact:
+    _restore_dbs: >-
+      {{
+        (mysql_databases.split(',') | map('trim') | list)
+        if (mysql_databases is string and ',' in mysql_databases)
+        else ([mysql_databases] if mysql_databases is string else mysql_databases)
+      }}
+
+- name: ensure mysql client is installed
+  become: true
+  package:
+    name: default-mysql-client
+    state: present
+
+- name: run restore for each database
+  include_tasks: restore_db.yml
+  loop: "{{ _restore_dbs }}"
+  loop_control:
+    loop_var: _db
