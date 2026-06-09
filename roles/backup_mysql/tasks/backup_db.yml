@@ -1,0 +1,104 @@
+- name: "backup {{ _db }} dari port {{ _instance.port }}"
+  become: true
+  shell: |
+    set -o pipefail
+    backup_file="/opt/backups/mysql/backup-{{ _db }}-{{ _instance.port }}-$(date +%Y-%m-%dT%H-%M-%S).sql"
+    tmp_file="$(mktemp /opt/backups/mysql/backup-XXXXXX.sql)"
+    err_file="${tmp_file}.err"
+
+    # Client mysqldump dipilih sesuai versi server ({{ _client_image }}):
+    #   server 5.x → mysql:5.7  |  server 8.x → mysql:8.0
+    # mysqldump 8.x tidak kompatibel dengan server MySQL 5.1 (hanya dump trigger,
+    # tabel terlewat diam-diam). Mencocokkan versi client mencegah backup corrupt.
+    docker run --rm \
+      --network host \
+      -e "MYSQL_PWD=$MYSQL_PWD" \
+      {{ _client_image }} \
+      mysqldump \
+        {{ _db | quote }} \
+        --single-transaction \
+        --skip-lock-tables \
+        --quick \
+        --skip-triggers \
+        --host={{ mysql_host | quote }} \
+        --port={{ _instance.port | string }} \
+        --user={{ mysql_username | quote }} \
+      > "$tmp_file" 2> "$err_file"
+    rc=$?
+
+    if [ $rc -eq 0 ] && [ -s "$tmp_file" ]; then
+      mv "$tmp_file" "$backup_file"
+      if [ -s "$err_file" ]; then
+        mv "$err_file" "${backup_file}.err"
+      else
+        rm -f "$err_file"
+      fi
+      echo "$backup_file"
+      exit 0
+    fi
+
+    cat "$err_file" >&2
+    rm -f "$tmp_file" "$err_file"
+    exit "${rc:-1}"
+  args:
+    executable: /bin/bash
+  environment:
+    MYSQL_PWD: "{{ mysql_password }}"
+  register: _backup_result
+
+- name: "set path backup terbaru {{ _db }}:{{ _instance.port }}"
+  set_fact:
+    _new_backup_file: "{{ _backup_result.stdout | trim }}"
+
+- name: "cek kelengkapan dump {{ _db }}:{{ _instance.port }}"
+  shell: "tail -5 {{ _new_backup_file | quote }} | grep -c 'Dump completed'"
+  register: _dump_complete
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: "assert dump lengkap {{ _db }}:{{ _instance.port }}"
+  assert:
+    that:
+      - _dump_complete.stdout | int > 0
+    fail_msg: >-
+      BACKUP TIDAK LENGKAP: '{{ _db }}' port {{ _instance.port }}.
+      Footer 'Dump completed' tidak ditemukan — mysqldump kemungkinan terputus.
+      File: {{ _new_backup_file }}
+    success_msg: "Dump footer OK"
+
+- name: "cek jumlah tabel di backup {{ _db }}:{{ _instance.port }}"
+  shell: "grep -c '^CREATE TABLE' {{ _new_backup_file | quote }}"
+  register: _table_count_in_sql
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: "assert ada tabel di dalam backup {{ _db }}:{{ _instance.port }}"
+  assert:
+    that:
+      - _table_count_in_sql.stdout | int > 0
+    fail_msg: >-
+      BACKUP KOSONG: Tidak ada CREATE TABLE di '{{ _new_backup_file }}'.
+      mysqldump client mungkin tidak kompatibel dengan versi server MySQL.
+    success_msg: "{{ _table_count_in_sql.stdout | trim }} tabel ditemukan di backup"
+
+- name: "buat SHA256 checksum {{ _db }}:{{ _instance.port }}"
+  shell: >
+    sha256sum {{ _new_backup_file | quote }}
+    > {{ (_new_backup_file ~ '.sha256') | quote }}
+  become: true
+
+- name: "stat file backup {{ _db }}:{{ _instance.port }}"
+  stat:
+    path: "{{ _new_backup_file }}"
+  register: _backup_stat
+
+- name: "ringkasan backup {{ _db }}:{{ _instance.port }}"
+  debug:
+    msg:
+      - "File    : {{ _new_backup_file }}"
+      - "Ukuran  : {{ (_backup_stat.stat.size / 1024 / 1024) | round(2) }} MB"
+      - "Tabel   : {{ _table_count_in_sql.stdout | trim }} CREATE TABLE"
+      - "Status  : LENGKAP"
+      - "SHA256  : tersimpan di {{ _new_backup_file }}.sha256"

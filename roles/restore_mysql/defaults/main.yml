@@ -1,7 +1,2 @@
-restore_backup_file: ""              # kosong = otomatis pilih backup terbaru
-restore_target_host: "{{ mysql_host }}"
-restore_target_port: "{{ mysql_port | default(3306) }}"
-restore_target_user: "{{ mysql_username }}"
-restore_target_password: "{{ mysql_password }}"
-restore_drop_db: true                # drop database sebelum restore
-restore_run_verify: true             # jalankan verifikasi setelah restore
+restore_backup_file: ""    # kosong = otomatis pilih backup terbaru
+restore_run_verify: true   # jalankan verifikasi setelah restore

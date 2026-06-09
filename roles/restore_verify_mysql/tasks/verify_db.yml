@@ -1,65 +1,150 @@
-- name: "find latest backup for {{ db_name }}"
+- name: "cari backup terbaru untuk {{ db_name }} port {{ _instance.port }}"
   find:
     paths: /opt/backups/mysql/
-    patterns: "backup-{{ db_name }}-*.sql"
+    patterns: "backup-{{ db_name }}-{{ _instance.port }}-*.sql"
     file_type: file
   register: backup_files
 
-- name: "assert backup file exists for {{ db_name }}"
+- name: "assert backup tersedia untuk {{ db_name }}:{{ _instance.port }}"
   assert:
     that:
       - backup_files.files | length > 0
-    fail_msg: "No backup file found for database {{ db_name }} in /opt/backups/mysql/"
+    fail_msg: "Tidak ada backup untuk '{{ db_name }}' port {{ _instance.port }} di /opt/backups/mysql/"
 
-- name: "get latest backup filepath for {{ db_name }}"
+- name: "set path backup terbaru untuk {{ db_name }}:{{ _instance.port }}"
   set_fact:
     latest_backup_file: "{{ (backup_files.files | sort(attribute='mtime') | last).path }}"
 
-- name: "display backup file to verify"
+- name: "info backup file: {{ db_name }}:{{ _instance.port }}"
   debug:
-    msg: "Verifying backup file: {{ latest_backup_file }}"
+    msg: "Verifying: {{ latest_backup_file }}"
 
-- name: "create temporary database inside Docker: {{ db_name }}"
+# ── Integrity checks ────────────────────────────────────────────────────────
+
+- name: "cek ukuran file backup {{ db_name }}:{{ _instance.port }}"
+  stat:
+    path: "{{ latest_backup_file }}"
+  register: _backup_stat
+
+- name: "assert file backup tidak kosong ({{ db_name }})"
+  assert:
+    that:
+      - _backup_stat.stat.size > 1024
+    fail_msg: >-
+      CORRUPT: File backup '{{ db_name }}' hanya {{ _backup_stat.stat.size }} bytes.
+      File kosong atau sangat kecil — backup kemungkinan gagal total.
+
+- name: "verifikasi SHA256 checksum {{ db_name }}:{{ _instance.port }}"
   shell: |
-    docker exec temp-mysql-restore mysql -uroot -h 127.0.0.1 -e "CREATE DATABASE IF NOT EXISTS \`{{ db_name }}\`"
+    sha256_file="{{ latest_backup_file }}.sha256"
+    if [ -f "$sha256_file" ]; then
+      if sha256sum -c "$sha256_file" --status 2>/dev/null; then
+        echo "OK: SHA256 cocok — file tidak berubah sejak backup"
+      else
+        echo "CORRUPT: SHA256 tidak cocok — file telah berubah atau rusak!"
+        exit 1
+      fi
+    else
+      echo "SKIP: File .sha256 tidak ditemukan (backup dibuat sebelum fitur checksum)"
+    fi
+  register: _sha256_check
+  changed_when: false
+  become: true
+
+- name: "hasil cek SHA256 {{ db_name }}:{{ _instance.port }}"
+  debug:
+    msg: "{{ _sha256_check.stdout }}"
+
+- name: "cek kelengkapan dump {{ db_name }}:{{ _instance.port }}"
+  shell: "tail -5 {{ latest_backup_file | quote }} | grep -c 'Dump completed'"
+  register: _dump_complete
+  changed_when: false
+  failed_when: false
+
+- name: "assert dump lengkap {{ db_name }}:{{ _instance.port }}"
+  assert:
+    that:
+      - _dump_complete.stdout | int > 0
+    fail_msg: >-
+      CORRUPT: Backup '{{ db_name }}' tidak memiliki footer 'Dump completed'.
+      Dump kemungkinan terputus di tengah proses. Segera jalankan ulang backup!
+
+# ── Import ke Docker ─────────────────────────────────────────────────────────
+
+- name: "buat database {{ db_name }} di Docker (port {{ _instance.port }})"
+  shell: |
+    docker exec {{ _verify_container }} \
+      mysql -uroot -h 127.0.0.1 -e "CREATE DATABASE IF NOT EXISTS \`{{ db_name }}\`"
   become: true
   register: create_db_res
   until: create_db_res.rc == 0
   retries: 15
   delay: 3
 
-- name: "import backup for {{ db_name }} into Docker MySQL"
-  shell: |
-    docker exec -i temp-mysql-restore mysql -uroot -h 127.0.0.1 {{ db_name | quote }} < {{ latest_backup_file | quote }}
+- name: "copy backup file ke dalam Docker container ({{ db_name }})"
+  shell: "docker cp {{ latest_backup_file | quote }} {{ _verify_container }}:/tmp/verify_{{ db_name }}.sql"
   become: true
-  register: import_db_res
-  until: import_db_res.rc == 0
-  retries: 10
-  delay: 3
 
-- name: "verify 1:1 database integrity for {{ db_name }}"
+- name: "import backup {{ db_name }} ke Docker"
+  shell: |
+    docker exec {{ _verify_container }} \
+      bash -c "mysql -uroot -h 127.0.0.1 --force {{ db_name | quote }} < /tmp/verify_{{ db_name }}.sql 2>&1"
+  become: true
+  register: _verify_import
+  failed_when: false
+
+- name: "tampilkan error import jika ada ({{ db_name }})"
+  debug:
+    msg: "Import output: {{ _verify_import.stdout_lines }}"
+  when: _verify_import.stdout | length > 0
+
+- name: "hapus file backup dari Docker container"
+  shell: "docker exec {{ _verify_container }} rm -f /tmp/verify_{{ db_name }}.sql"
+  become: true
+  ignore_errors: true
+
+- name: "hitung tabel berhasil di-import untuk {{ db_name }}"
+  shell: |
+    docker exec {{ _verify_container }} \
+      mysql -uroot -h 127.0.0.1 --batch --skip-column-names \
+      -e "SELECT COUNT(*) FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA='{{ db_name }}' AND TABLE_TYPE='BASE TABLE'"
+  register: _imported_count
+  become: true
+
+- name: "assert import tidak kosong ({{ db_name }}:{{ _instance.port }})"
+  assert:
+    that:
+      - _imported_count.stdout | trim | int > 0
+    fail_msg: >-
+      Import GAGAL: 0 tabel berhasil di-import untuk '{{ db_name }}'.
+      Backup file mungkin corrupt. Errors: {{ _verify_import.stdout }}
+
+# ── Verifikasi 1:1 vs original ───────────────────────────────────────────────
+
+- name: "verifikasi 1:1 {{ db_name }} (backup vs original)"
   shell: |
     /tmp/verify_mysql_integrity.py \
       --orig-host {{ mysql_host | quote }} \
-      --orig-port {{ mysql_port | default(3306) | string | quote }} \
+      --orig-port {{ _instance.port | string | quote }} \
       --orig-user {{ mysql_username | quote }} \
       --orig-password {{ mysql_password | quote }} \
       --orig-db {{ db_name | quote }} \
       --dest-host "127.0.0.1" \
-      --dest-port 3309 \
+      --dest-port {{ _verify_port | string | quote }} \
       --dest-user "root" \
       --dest-password "" \
       --dest-db {{ db_name | quote }}
   register: verify_result
   failed_when: verify_result.rc not in [0, 1, 2]
 
-- name: "display verification result for {{ db_name }}"
+- name: "hasil verifikasi {{ db_name }}:{{ _instance.port }}"
   debug:
     msg: "{{ verify_result.stdout_lines }}"
 
-- name: "assert backup integrity for {{ db_name }}"
+- name: "assert integritas backup {{ db_name }}:{{ _instance.port }}"
   assert:
     that:
       - verify_result.rc == 0
-    fail_msg: "Verifikasi backup GAGAL: isi backup tidak cocok 1:1 dengan database sumber '{{ db_name }}'"
-    success_msg: "Verifikasi backup BERHASIL: backup '{{ db_name }}' cocok 100% dengan database sumber"
+    fail_msg: "Verifikasi GAGAL: backup '{{ db_name }}' port {{ _instance.port }} tidak cocok dengan original"
+    success_msg: "Verifikasi BERHASIL: backup '{{ db_name }}' port {{ _instance.port }} cocok 100%"

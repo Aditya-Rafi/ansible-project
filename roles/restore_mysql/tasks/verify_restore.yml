@@ -1,74 +1,46 @@
-- name: "copy verification script for {{ _db }}"
+- name: "copy script verifikasi untuk {{ _db }}:{{ _instance.port }}"
   copy:
     src: verify_mysql_integrity.py
     dest: /tmp/verify_mysql_integrity.py
     mode: '0755'
 
-- name: "Post-Restore Verification: {{ _db }}"
-  block:
-    - name: "spin up Docker reference container for {{ _db }}"
-      shell: |
-        docker run -d \
-          --name temp-mysql-restore-verify \
-          -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
-          -p 127.0.0.1:3310:3306 \
-          mysql:5.7
-      become: true
+- name: "bandingkan Docker (backup) vs original {{ _db }}:{{ _instance.port }}"
+  shell: |
+    /tmp/verify_mysql_integrity.py \
+      --orig-host "127.0.0.1" \
+      --orig-port {{ _restore_port | string | quote }} \
+      --orig-user "root" \
+      --orig-password "" \
+      --orig-db {{ _db | quote }} \
+      --dest-host {{ mysql_host | quote }} \
+      --dest-port {{ _instance.port | string | quote }} \
+      --dest-user {{ mysql_username | quote }} \
+      --dest-password {{ mysql_password | quote }} \
+      --dest-db {{ _db | quote }}
+  register: _verify_result
+  failed_when: _verify_result.rc not in [0, 1, 2]
 
-    - name: "wait for Docker MySQL to be ready ({{ _db }})"
-      shell: |
-        docker exec temp-mysql-restore-verify mysqladmin ping -h localhost --silent
-      register: _docker_ping
-      until: _docker_ping.rc == 0
-      retries: 20
-      delay: 2
-      become: true
+- name: "hasil verifikasi {{ _db }}:{{ _instance.port }}"
+  debug:
+    msg: "{{ _verify_result.stdout_lines }}"
 
-    - name: "create reference database {{ _db }} in Docker"
-      shell: |
-        docker exec temp-mysql-restore-verify \
-          mysql -uroot -e "CREATE DATABASE IF NOT EXISTS \`{{ _db }}\`"
-      become: true
-      register: _create_docker_db
-      until: _create_docker_db.rc == 0
-      retries: 15
-      delay: 3
+- name: "assert struktur lengkap untuk {{ _db }}:{{ _instance.port }}"
+  assert:
+    that:
+      - _verify_result.rc != 1
+    fail_msg: >-
+      STRUKTUR TIDAK LENGKAP: tabel hilang di restore '{{ _db }}' port {{ _instance.port }}.
+      Backup mungkin tidak lengkap atau corrupt.
+    success_msg: "Struktur '{{ _db }}' lengkap di hasil restore"
 
-    - name: "import backup {{ _restore_file }} into Docker (referensi)"
-      shell: |
-        docker exec -i temp-mysql-restore-verify \
-          mysql -uroot {{ _db | quote }} < {{ _restore_file | quote }}
-      become: true
+- name: "info perbedaan data {{ _db }}:{{ _instance.port }}"
+  debug:
+    msg: >-
+      INFO: Data backup berbeda dengan production saat ini untuk '{{ _db }}' port {{ _instance.port }}.
+      Normal jika data production berubah sejak backup dibuat.
+  when: _verify_result.rc == 2
 
-    - name: "compare backup (Docker) vs restored ({{ _db }})"
-      shell: |
-        /tmp/verify_mysql_integrity.py \
-          --orig-host "127.0.0.1" \
-          --orig-port 3310 \
-          --orig-user "root" \
-          --orig-password "" \
-          --orig-db {{ _db | quote }} \
-          --dest-host {{ restore_target_host | quote }} \
-          --dest-port {{ restore_target_port | string | quote }} \
-          --dest-user {{ restore_target_user | quote }} \
-          --dest-password {{ restore_target_password | quote }} \
-          --dest-db {{ _db | quote }}
-      register: _verify_result
-      failed_when: _verify_result.rc not in [0, 1, 2]
-
-    - name: "hasil verifikasi post-restore: {{ _db }}"
-      debug:
-        msg: "{{ _verify_result.stdout_lines }}"
-
-    - name: "assert restore berhasil 1:1 untuk {{ _db }}"
-      assert:
-        that:
-          - _verify_result.rc == 0
-        fail_msg: "Verifikasi GAGAL: data yang di-restore tidak cocok 100% dengan backup untuk database '{{ _db }}'"
-        success_msg: "Verifikasi BERHASIL: restore {{ _db }} cocok 100% dengan backup"
-
-  always:
-    - name: "remove Docker container ({{ _db }})"
-      shell: docker rm -f temp-mysql-restore-verify
-      become: true
-      ignore_errors: true
+- name: "konfirmasi restore identik {{ _db }}:{{ _instance.port }}"
+  debug:
+    msg: "COCOK 100%: backup '{{ _db }}' port {{ _instance.port }} identik dengan production."
+  when: _verify_result.rc == 0

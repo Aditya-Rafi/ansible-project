@@ -4,35 +4,8 @@
     dest: /tmp/verify_mysql_integrity.py
     mode: '0755'
 
-- name: Restore and Verification Block
-  block:
-    - name: spin up temporary MySQL Docker container for verification
-      shell: |
-        docker run -d \
-          --name temp-mysql-restore \
-          -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
-          -p 127.0.0.1:3309:3306 \
-          mysql:5.7
-      become: true
-
-    - name: wait for temporary MySQL container to be ready
-      shell: |
-        docker exec temp-mysql-restore mysqladmin ping -h localhost --silent
-      register: mysql_ping
-      until: mysql_ping.rc == 0
-      retries: 20
-      delay: 2
-      become: true
-
-    - name: run verification for each database
-      include_tasks: verify_db.yml
-      loop: "{{ (mysql_databases.split(',') if mysql_databases is string and ',' in mysql_databases else [mysql_databases]) if mysql_databases is string else mysql_databases }}"
-      loop_control:
-        loop_var: db_name
-
-  always:
-    - name: remove temporary MySQL Docker container
-      shell: |
-        docker rm -f temp-mysql-restore
-      become: true
-      ignore_errors: true
+- name: verify backup setiap MySQL instance
+  include_tasks: verify_instance.yml
+  loop: "{{ mysql_instances }}"
+  loop_control:
+    loop_var: _instance

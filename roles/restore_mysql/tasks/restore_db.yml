@@ -1,17 +1,17 @@
-- name: "find backup files for {{ _db }}"
+- name: "cari file backup untuk {{ _db }}:{{ _instance.port }}"
   find:
     paths: /opt/backups/mysql/
-    patterns: "backup-{{ _db }}-*.sql"
+    patterns: "backup-{{ _db }}-{{ _instance.port }}-*.sql"
     file_type: file
   register: _db_backups
 
-- name: "assert backup exists for {{ _db }}"
+- name: "assert backup tersedia untuk {{ _db }}:{{ _instance.port }}"
   assert:
     that:
       - _db_backups.files | length > 0
-    fail_msg: "Tidak ada file backup untuk database {{ _db }} di /opt/backups/mysql/"
+    fail_msg: "Tidak ada backup untuk '{{ _db }}' port {{ _instance.port }} di /opt/backups/mysql/"
 
-- name: "set backup file to use for {{ _db }}"
+- name: "tentukan file backup untuk {{ _db }}:{{ _instance.port }}"
   set_fact:
     _restore_file: >-
       {{
@@ -20,50 +20,121 @@
         else (_db_backups.files | sort(attribute='mtime') | last).path
       }}
 
-- name: "display restore plan for {{ _db }}"
+- name: "rencana restore {{ _db }}:{{ _instance.port }}"
   debug:
     msg:
-      - "Database    : {{ _db }}"
-      - "Backup file : {{ _restore_file }}"
-      - "Target      : {{ restore_target_host }}:{{ restore_target_port }}"
-      - "Drop first  : {{ restore_drop_db }}"
+      - "Database  : {{ _db }}"
+      - "Port      : {{ _instance.port }}"
+      - "Backup    : {{ _restore_file }}"
+      - "Container : {{ _restore_container }}"
 
-- name: "drop database {{ _db }} before restore"
+# ── Integrity checks ────────────────────────────────────────────────────────
+
+- name: "cek ukuran file backup {{ _db }}:{{ _instance.port }}"
+  stat:
+    path: "{{ _restore_file }}"
+  register: _restore_stat
+
+- name: "assert file backup tidak kosong ({{ _db }})"
+  assert:
+    that:
+      - _restore_stat.stat.size > 1024
+    fail_msg: >-
+      CORRUPT: File backup '{{ _db }}' hanya {{ _restore_stat.stat.size }} bytes — tidak dapat di-restore.
+
+- name: "verifikasi SHA256 checksum {{ _db }}:{{ _instance.port }}"
   shell: |
-    mysql \
-      -h {{ restore_target_host | quote }} \
-      -P {{ restore_target_port | string | quote }} \
-      -u {{ restore_target_user | quote }} \
-      -e "DROP DATABASE IF EXISTS \`{{ _db }}\`;"
-  environment:
-    MYSQL_PWD: "{{ restore_target_password }}"
-  when: restore_drop_db
+    sha256_file="{{ _restore_file }}.sha256"
+    if [ -f "$sha256_file" ]; then
+      if sha256sum -c "$sha256_file" --status 2>/dev/null; then
+        echo "OK: SHA256 cocok — file tidak berubah sejak backup"
+      else
+        echo "CORRUPT: SHA256 tidak cocok — file telah berubah atau rusak!"
+        exit 1
+      fi
+    else
+      echo "SKIP: File .sha256 tidak ditemukan (backup dibuat sebelum fitur checksum)"
+    fi
+  register: _sha256_check
+  changed_when: false
+  become: true
 
-- name: "create database {{ _db }}"
-  shell: |
-    mysql \
-      -h {{ restore_target_host | quote }} \
-      -P {{ restore_target_port | string | quote }} \
-      -u {{ restore_target_user | quote }} \
-      -e "CREATE DATABASE \`{{ _db }}\`;"
-  environment:
-    MYSQL_PWD: "{{ restore_target_password }}"
-
-- name: "restore {{ _restore_file }} into {{ _db }}"
-  shell: |
-    mysql \
-      -h {{ restore_target_host | quote }} \
-      -P {{ restore_target_port | string | quote }} \
-      -u {{ restore_target_user | quote }} \
-      {{ _db | quote }} < {{ _restore_file | quote }}
-  environment:
-    MYSQL_PWD: "{{ restore_target_password }}"
-  register: _restore_result
-
-- name: "restore complete for {{ _db }}"
+- name: "hasil cek SHA256 {{ _db }}:{{ _instance.port }}"
   debug:
-    msg: "Restore selesai: {{ _restore_file }} → database '{{ _db }}'"
+    msg: "{{ _sha256_check.stdout }}"
 
-- name: "run post-restore verification for {{ _db }}"
+- name: "cek kelengkapan dump {{ _db }}:{{ _instance.port }}"
+  shell: "tail -5 {{ _restore_file | quote }} | grep -c 'Dump completed'"
+  register: _dump_complete
+  changed_when: false
+  failed_when: false
+
+- name: "assert dump lengkap {{ _db }}:{{ _instance.port }}"
+  assert:
+    that:
+      - _dump_complete.stdout | int > 0
+    fail_msg: >-
+      CORRUPT: Backup '{{ _db }}' tidak memiliki footer 'Dump completed'.
+      Dump kemungkinan terputus di tengah. Jangan restore dari file ini!
+
+# ── Import ke Docker ─────────────────────────────────────────────────────────
+
+- name: "buat database {{ _db }} di Docker"
+  shell: |
+    docker exec {{ _restore_container }} \
+      mysql -uroot -h 127.0.0.1 -e "CREATE DATABASE IF NOT EXISTS \`{{ _db }}\`"
+  become: true
+  register: _create_db
+  until: _create_db.rc == 0
+  retries: 10
+  delay: 3
+
+- name: "copy backup file ke dalam Docker container"
+  shell: "docker cp {{ _restore_file | quote }} {{ _restore_container }}:/tmp/restore_{{ _db }}.sql"
+  become: true
+
+- name: "import backup ke Docker ({{ _db }}:{{ _instance.port }})"
+  shell: |
+    docker exec {{ _restore_container }} \
+      bash -c "mysql -uroot -h 127.0.0.1 --force {{ _db | quote }} < /tmp/restore_{{ _db }}.sql 2>&1"
+  become: true
+  register: _import_result
+  failed_when: false
+
+- name: "tampilkan error import jika ada ({{ _db }}:{{ _instance.port }})"
+  debug:
+    msg: "Import output: {{ _import_result.stdout_lines }}"
+  when: _import_result.stdout | length > 0
+
+- name: "hapus file backup dari Docker container"
+  shell: "docker exec {{ _restore_container }} rm -f /tmp/restore_{{ _db }}.sql"
+  become: true
+  ignore_errors: true
+
+- name: "hitung tabel berhasil di-import {{ _db }}"
+  shell: |
+    docker exec {{ _restore_container }} \
+      mysql -uroot -h 127.0.0.1 --batch --skip-column-names \
+      -e "SELECT COUNT(*) FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA='{{ _db }}' AND TABLE_TYPE='BASE TABLE'"
+  register: _imported_count
+  become: true
+
+- name: "assert restore tidak kosong ({{ _db }}:{{ _instance.port }})"
+  assert:
+    that:
+      - _imported_count.stdout | trim | int > 0
+    fail_msg: >-
+      Restore GAGAL: 0 tabel berhasil di-import untuk '{{ _db }}'.
+      Errors: {{ _import_result.stdout }}
+
+- name: "import selesai untuk {{ _db }}:{{ _instance.port }}"
+  debug:
+    msg:
+      - "Import selesai: {{ _restore_file }}"
+      - "  → Database '{{ _db }}' di {{ _restore_container }}"
+      - "  → {{ _imported_count.stdout | trim }} tabel berhasil di-restore"
+
+- name: "verifikasi restore {{ _db }}:{{ _instance.port }}"
   include_tasks: verify_restore.yml
   when: restore_run_verify | bool

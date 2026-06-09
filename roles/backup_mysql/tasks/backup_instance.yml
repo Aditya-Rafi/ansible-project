@@ -1,0 +1,71 @@
+- name: "discover semua DB non-system dari port {{ _instance.port }}"
+  shell: |
+    mysql -h {{ mysql_host | quote }} -P {{ _instance.port | string | quote }} \
+      -u {{ mysql_username | quote }} \
+      --batch --skip-column-names \
+      -e "SHOW DATABASES WHERE \`Database\` NOT IN
+          ('information_schema', 'performance_schema', 'sys', 'mysql')"
+  environment:
+    MYSQL_PWD: "{{ mysql_password }}"
+  register: _discovered
+  changed_when: false
+  when: _instance.databases | string | lower == 'all'
+
+- name: "set DB list dari auto-discovery (port {{ _instance.port }})"
+  set_fact:
+    _instance_dbs: "{{ _discovered.stdout_lines | select('string') | reject('equalto', '') | list }}"
+  when: _instance.databases | string | lower == 'all'
+
+- name: "set DB list dari inventory (port {{ _instance.port }})"
+  set_fact:
+    _instance_dbs: >-
+      {{
+        (_instance.databases.split(',') | map('trim') | reject('equalto', '') | list)
+        if (_instance.databases is string and ',' in _instance.databases)
+        else ([_instance.databases | trim])
+      }}
+  when: _instance.databases | string | lower != 'all'
+
+- name: "databases yang akan di-backup pada port {{ _instance.port }}"
+  debug:
+    msg: "Port {{ _instance.port }}: {{ _instance_dbs | join(', ') }}"
+
+- name: "deteksi versi MySQL server port {{ _instance.port }}"
+  shell: |
+    mysql -h {{ mysql_host | quote }} -P {{ _instance.port | string | quote }} \
+      -u {{ mysql_username | quote }} \
+      --batch --skip-column-names -e "SELECT VERSION()"
+  environment:
+    MYSQL_PWD: "{{ mysql_password }}"
+  register: _server_version
+  changed_when: false
+
+- name: "pilih image client mysqldump sesuai versi server (port {{ _instance.port }})"
+  set_fact:
+    _client_image: "{{ 'mysql:8.0' if (_server_version.stdout | trim | split('.') | first | int) >= 8 else 'mysql:5.7' }}"
+
+- name: "info versi & client (port {{ _instance.port }})"
+  debug:
+    msg: "Server MySQL {{ _server_version.stdout | trim }} → client mysqldump: {{ _client_image }}"
+
+- name: "backup setiap database pada port {{ _instance.port }}"
+  include_tasks: backup_db.yml
+  loop: "{{ _instance_dbs }}"
+  loop_control:
+    loop_var: _db
+
+- name: "cari backup lama (>7 hari) untuk port {{ _instance.port }}"
+  become: true
+  find:
+    paths: /opt/backups/mysql
+    patterns: "backup-*-{{ _instance.port }}-*.sql"
+    age: 7d
+    recurse: false
+  register: _old_backups
+
+- name: "hapus backup lama untuk port {{ _instance.port }}"
+  become: true
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _old_backups.files }}"

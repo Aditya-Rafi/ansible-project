@@ -1,71 +1,23 @@
-- name : create backup directory
+- name: buat direktori backup
   become: true
-  become_user: root
   file:
     path: /opt/backups/mysql
     state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    owner: root
+    group: root
     mode: '0755'
 
-- name: ensure mysqldump is installed
+- name: pull image client mysqldump (5.7 & 8.0)
   become: true
-  become_user: root
-  package:
-    name: default-mysql-client
-    state: present
+  shell: "docker pull {{ item }}"
+  loop:
+    - mysql:5.7
+    - mysql:8.0
+  register: _pull_result
+  changed_when: "'Status: Downloaded newer image' in _pull_result.stdout"
 
-- name: backup mysql databases
-  shell: |
-    set -o pipefail
-    backup_file="/opt/backups/mysql/backup-{{{ mysql_databases | join(' ') } { lookup('pipe', 'date +%Y-%m-%dT%H-%M-%S') }.sql"
-    tmp_file="$(mktemp /opt/backups/mysql/backup-XXXXXX.sql)"
-    err_file="${tmp_file}.err"
-
-    mysqldump \
-      {{ mysql_databases | join(' ') }} \
-      --single-transaction \
-      --skip-lock-tables \
-      --quick \
-      --force \
-      --column-statistics=0 \
-      --host={{ mysql_host | quote }} \
-      --port={{ mysql_port | default(3306) | string | quote }} \
-      --user={{ mysql_username | quote }} \
-      --result-file="$tmp_file" 2> "$err_file"
-    rc=$?
-
-    if [ -s "$tmp_file" ]; then
-      mv "$tmp_file" "$backup_file"
-      if [ -s "$err_file" ]; then
-        mv "$err_file" "${backup_file}.err"
-        echo "Backup created with mysqldump warnings: ${backup_file}.err"
-      fi
-      exit 0
-    fi
-
-    cat "$err_file" >&2
-    rm -f "$tmp_file" "$err_file"
-    exit "$rc"
-  args:
-    executable: /bin/bash
-  no_log: false
-  environment:
-    MYSQL_PWD: "{{ mysql_password }}"
-
-- name: remove old backups
-  become: true
-  become_user: root
-  find:
-    paths: /opt/backups/mysql
-    age: 7d
-    recurse: yes
-  register: old_backups
-
-- name: delete old backups
-  become: true
-  become_user: root
-  file:
-    path: "{{ item.path }}"
-    state: absent
-  loop: "{{ old_backups.files }}"
+- name: Process backup for each MySQL instance
+  include_tasks: backup_instance.yml
+  loop: "{{ mysql_instances }}"
+  loop_control:
+    loop_var: _instance

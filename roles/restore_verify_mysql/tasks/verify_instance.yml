@@ -1,0 +1,108 @@
+- name: "temukan semua file backup untuk port {{ _instance.port }}"
+  find:
+    paths: /opt/backups/mysql/
+    patterns: "backup-*-{{ _instance.port }}-*.sql"
+    file_type: file
+  register: _found_backups
+  when: _instance.databases | string | lower == 'all'
+
+- name: "extract nama DB dari file backup (port {{ _instance.port }})"
+  set_fact:
+    _instance_dbs: >-
+      {{
+        _found_backups.files
+        | map(attribute='path') | map('basename')
+        | map('regex_replace', '^backup-(.+)-' ~ _instance.port | string ~ '-.*\\.sql$', '\\1')
+        | unique | sort | list
+      }}
+  when: _instance.databases | string | lower == 'all'
+
+- name: "set DB list dari inventory (port {{ _instance.port }})"
+  set_fact:
+    _instance_dbs: >-
+      {{
+        (_instance.databases.split(',') | map('trim') | reject('equalto', '') | list)
+        if (_instance.databases is string and ',' in _instance.databases)
+        else ([_instance.databases | trim])
+      }}
+  when: _instance.databases | string | lower != 'all'
+
+- name: "databases yang akan diverifikasi pada port {{ _instance.port }}"
+  debug:
+    msg: "Port {{ _instance.port }}: {{ _instance_dbs | join(', ') }}"
+
+- name: "ambil timestamp untuk verifikasi (port {{ _instance.port }})"
+  command: date +%Y%m%dT%H%M%S
+  register: _verify_ts_cmd
+  changed_when: false
+
+- name: "set verification container name (port {{ _instance.port }})"
+  set_fact:
+    _verify_container: "temp-verify-{{ _instance.port }}-{{ _verify_ts_cmd.stdout }}"
+
+- name: "hapus container verifikasi lama jika ada (port {{ _instance.port }})"
+  shell: "docker rm -f {{ _verify_container }}"
+  become: true
+  ignore_errors: true
+
+- name: "ambil versi MySQL dari port {{ _instance.port }}"
+  shell: |
+    mysql -h {{ mysql_host | quote }} -P {{ _instance.port | string | quote }} \
+      -u {{ mysql_username | quote }} \
+      -N -B -e "SELECT VERSION();"
+  environment:
+    MYSQL_PWD: "{{ mysql_password }}"
+  register: _mysql_version_raw
+  changed_when: false
+
+- name: "set MySQL major version fact"
+  set_fact:
+    _mysql_major: "{{ _mysql_version_raw.stdout | regex_replace('^([0-9]+)\\..*$', '\\1') }}"
+
+- name: "set Docker image name for verification"
+  set_fact:
+    _verify_image: "{{ 'mysql:5.7' if _mysql_major == '5' else 'mysql:8.0' }}"
+
+- name: "Verify Backup Block — port {{ _instance.port }}"
+  block:
+    - name: "spin up Docker container untuk verifikasi port {{ _instance.port }}"
+      shell: |
+        docker run -d \
+          --name {{ _verify_container }} \
+          -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
+          -P \
+          {{ _verify_image }} \
+          {{ '--default-authentication-plugin=mysql_native_password' if _mysql_major == '8' else '' }}
+      become: true
+
+    - name: "ambil port Docker untuk verifikasi {{ _instance.port }}"
+      shell: "docker port {{ _verify_container }} 3306/tcp | cut -d: -f2"
+      register: _verify_docker_port
+      become: true
+      retries: 5
+      delay: 2
+      until: _verify_docker_port.rc == 0
+
+    - name: "set docker port fact untuk instance {{ _instance.port }}"
+      set_fact:
+        _verify_port: "{{ _verify_docker_port.stdout | trim }}"
+
+    - name: "tunggu Docker MySQL siap (instance {{ _instance.port }})"
+      shell: "docker exec {{ _verify_container }} mysqladmin ping -h localhost --silent"
+      register: _verify_ping
+      until: _verify_ping.rc == 0
+      retries: 20
+      delay: 2
+      become: true
+
+    - name: "verifikasi setiap database pada port {{ _instance.port }}"
+      include_tasks: verify_db.yml
+      loop: "{{ _instance_dbs }}"
+      loop_control:
+        loop_var: db_name
+
+  always:
+    - name: "hapus Docker container verifikasi port {{ _instance.port }}"
+      shell: "docker rm -f {{ _verify_container }}"
+      become: true
+      ignore_errors: true

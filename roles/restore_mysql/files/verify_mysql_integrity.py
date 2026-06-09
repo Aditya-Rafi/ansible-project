@@ -38,6 +38,22 @@ def main():
     parser.add_argument("--dest-db", required=True)
     args = parser.parse_args()
 
+    # Get versions
+    orig_ver = run_query(args.orig_host, args.orig_port, args.orig_user, args.orig_password, "SELECT VERSION()")
+    dest_ver = run_query(args.dest_host, args.dest_port, args.dest_user, args.dest_password, "SELECT VERSION()")
+
+    # Extract major.minor (e.g. "5.1" from "5.1.73" or "8.0" from "8.0.24")
+    def get_major_minor(version_str):
+        parts = version_str.split('.')
+        if len(parts) >= 2:
+            return f"{parts[0]}.{parts[1]}"
+        return version_str
+
+    orig_mm = get_major_minor(orig_ver)
+    dest_mm = get_major_minor(dest_ver)
+
+    compare_checksums = (orig_mm == dest_mm)
+
     # 1. Get original tables (excluding views)
     orig_tables_out = run_query(
         args.orig_host, args.orig_port, args.orig_user, args.orig_password,
@@ -56,6 +72,13 @@ def main():
     print(f"Checking Database Integrity: Orig (`{args.orig_db}`) vs Dest (`{args.dest_db}`)")
     print(f"======================================================================")
     print(f"Original Physical Tables: {len(orig_tables)} | Restored Physical Tables: {len(dest_tables)}")
+    if not compare_checksums:
+        print(f"[WARNING] MySQL versions differ: Orig ({orig_ver}) vs Dest ({dest_ver})")
+        print(f"          InnoDB CHECKSUM TABLE is sensitive to MySQL version and storage formats.")
+        print(f"          Checksum verification will be SKIPPED. Row counts and schema structure will still be verified 1:1.")
+    else:
+        print(f"[+] MySQL versions match ({orig_mm}). Running full row count & CHECKSUM TABLE checks.")
+    print(f"======================================================================")
 
     orig_set = set(orig_tables)
     dest_set = set(dest_tables)
@@ -70,7 +93,7 @@ def main():
         sys.exit(1)
 
     print("[+] Structure verification: OK (All physical tables exist in both databases)")
-    print("[+] Running 1:1 row count & checksum verification on all physical tables...")
+    print("[+] Running 1:1 row count verification on all physical tables...")
 
     mismatches = 0
     checked_count = 0
@@ -82,14 +105,21 @@ def main():
         cnt_orig = int(cnt_orig_str) if cnt_orig_str else 0
         cnt_dest = int(cnt_dest_str) if cnt_dest_str else 0
 
-        # 2. Compare table checksums
-        chk_orig_out = run_query(args.orig_host, args.orig_port, args.orig_user, args.orig_password, f"CHECKSUM TABLE `{args.orig_db}`.`{tbl}`")
-        chk_dest_out = run_query(args.dest_host, args.dest_port, args.dest_user, args.dest_password, f"CHECKSUM TABLE `{args.dest_db}`.`{tbl}`")
+        row_mismatch = (cnt_orig != cnt_dest)
+        checksum_mismatch = False
 
-        chk_orig = chk_orig_out.split('\t')[-1].strip() if chk_orig_out else "NULL"
-        chk_dest = chk_dest_out.split('\t')[-1].strip() if chk_dest_out else "NULL"
+        chk_orig = "SKIPPED"
+        chk_dest = "SKIPPED"
 
-        if cnt_orig != cnt_dest or chk_orig != chk_dest:
+        if compare_checksums:
+            # 2. Compare table checksums
+            chk_orig_out = run_query(args.orig_host, args.orig_port, args.orig_user, args.orig_password, f"CHECKSUM TABLE `{args.orig_db}`.`{tbl}`")
+            chk_dest_out = run_query(args.dest_host, args.dest_port, args.dest_user, args.dest_password, f"CHECKSUM TABLE `{args.dest_db}`.`{tbl}`")
+            chk_orig = chk_orig_out.split('\t')[-1].strip() if chk_orig_out else "NULL"
+            chk_dest = chk_dest_out.split('\t')[-1].strip() if chk_dest_out else "NULL"
+            checksum_mismatch = (chk_orig != chk_dest)
+
+        if row_mismatch or checksum_mismatch:
             print(f"[-] MISMATCH on table `{tbl}`:")
             print(f"    Original: Rows={cnt_orig}, Checksum={chk_orig}")
             print(f"    Restored: Rows={cnt_dest}, Checksum={chk_dest}")

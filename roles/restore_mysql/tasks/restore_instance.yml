@@ -1,0 +1,127 @@
+- name: "temukan semua file backup untuk port {{ _instance.port }}"
+  find:
+    paths: /opt/backups/mysql/
+    patterns: "backup-*-{{ _instance.port }}-*.sql"
+    file_type: file
+  register: _found_backups
+  when: _instance.databases | string | lower == 'all'
+
+- name: "extract nama DB dari file backup (port {{ _instance.port }})"
+  set_fact:
+    _instance_dbs: >-
+      {{
+        _found_backups.files
+        | map(attribute='path') | map('basename')
+        | map('regex_replace', '^backup-(.+)-' ~ _instance.port | string ~ '-.*\\.sql$', '\\1')
+        | unique | sort | list
+      }}
+    _restore_container: "mysql-restore-{{ _instance.port }}-{{ _restore_ts }}"
+  when: _instance.databases | string | lower == 'all'
+
+- name: "set DB list dari inventory (port {{ _instance.port }})"
+  set_fact:
+    _instance_dbs: >-
+      {{
+        (_instance.databases.split(',') | map('trim') | reject('equalto', '') | list)
+        if (_instance.databases is string and ',' in _instance.databases)
+        else ([_instance.databases | trim])
+      }}
+    _restore_container: "mysql-restore-{{ _instance.port }}-{{ _restore_ts }}"
+  when: _instance.databases | string | lower != 'all'
+
+- name: "databases yang akan di-restore dari port {{ _instance.port }}"
+  debug:
+    msg: "Port {{ _instance.port }}: {{ _instance_dbs | join(', ') }}"
+
+- name: "deteksi versi MySQL server port {{ _instance.port }}"
+  shell: |
+    mysql -h {{ mysql_host | quote }} -P {{ _instance.port | string | quote }} \
+      -u {{ mysql_username | quote }} \
+      -N -B -e "SELECT VERSION();"
+  environment:
+    MYSQL_PWD: "{{ mysql_password }}"
+  register: _restore_version_raw
+  changed_when: false
+
+- name: "set image restore sesuai versi server (port {{ _instance.port }})"
+  set_fact:
+    _restore_major: "{{ _restore_version_raw.stdout | regex_replace('^([0-9]+)\\..*$', '\\1') }}"
+    _restore_image: "{{ 'mysql:5.7' if (_restore_version_raw.stdout | trim | split('.') | first | int) < 8 else 'mysql:8.0' }}"
+
+- name: "info versi & image restore (port {{ _instance.port }})"
+  debug:
+    msg: "Server MySQL {{ _restore_version_raw.stdout | trim }} → container restore: {{ _restore_image }}"
+
+- name: "Restore Block — port {{ _instance.port }}"
+  block:
+    - name: "spin up Docker container restore port {{ _instance.port }}"
+      shell: |
+        docker run -d \
+          --name {{ _restore_container }} \
+          -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
+          -P \
+          --restart unless-stopped \
+          {{ _restore_image }} \
+          {{ '--default-authentication-plugin=mysql_native_password' if _restore_major == '8' else '' }}
+      become: true
+
+    - name: "ambil port Docker untuk restore {{ _instance.port }}"
+      shell: "docker port {{ _restore_container }} 3306/tcp | cut -d: -f2"
+      register: _restore_port_raw
+      become: true
+      retries: 5
+      delay: 2
+      until: _restore_port_raw.rc == 0
+
+    - name: "set restore port fact"
+      set_fact:
+        _restore_port: "{{ _restore_port_raw.stdout | trim }}"
+
+    - name: "tunggu Docker MySQL siap (port {{ _instance.port }})"
+      shell: "docker exec {{ _restore_container }} mysqladmin ping -h localhost --silent"
+      register: _docker_ping
+      until: _docker_ping.rc == 0
+      retries: 20
+      delay: 2
+      become: true
+
+    - name: "restore setiap database dari port {{ _instance.port }}"
+      include_tasks: restore_db.yml
+      loop: "{{ _instance_dbs }}"
+      loop_control:
+        loop_var: _db
+
+    - name: "jadwalkan penghapusan container {{ _restore_container }} setelah 3 hari"
+      cron:
+        name: "cleanup-{{ _restore_container }}"
+        minute: "0"
+        hour: "2"
+        day: "{{ _removal_day }}"
+        month: "{{ _removal_month }}"
+        user: root
+        job: >-
+          docker rm -f {{ _restore_container }} &&
+          crontab -l | grep -v 'cleanup-{{ _restore_container }}' | crontab -
+      become: true
+
+    - name: "ringkasan restore port {{ _instance.port }}"
+      debug:
+        msg:
+          - "======================================================"
+          - "Restore port {{ _instance.port }} selesai:"
+          - "  Container : {{ _restore_container }}"
+          - "  Port akses: 127.0.0.1:{{ _restore_port }}"
+          - "  Databases : {{ _instance_dbs | join(', ') }}"
+          - "  Dihapus   : 3 hari dari sekarang (pukul 02:00)"
+          - "  Inspeksi  : docker exec -it {{ _restore_container }} mysql -uroot -h 127.0.0.1"
+          - "======================================================"
+
+  rescue:
+    - name: "hapus container jika restore port {{ _instance.port }} gagal"
+      shell: "docker rm -f {{ _restore_container }}"
+      become: true
+      ignore_errors: true
+
+    - name: "fail restore port {{ _instance.port }}"
+      fail:
+        msg: "Restore port {{ _instance.port }} gagal. Container {{ _restore_container }} telah dihapus."
