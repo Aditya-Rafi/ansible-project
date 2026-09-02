@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 - name: Start MySQL service
   service:
     name: mysql
@@ -26,3 +27,34 @@
     state: reloaded
     enabled: yes
   tags: [reload]
+=======
+- name: Start MySQL container
+  community.docker.docker_container:
+    name: "{{ mysql_container_name }}"
+    image: "{{ mysql_image }}"
+    state: started
+    restart_policy: unless-stopped
+  tags: [start]
+  when:
+    - not ansible_check_mode
+    - ansible_run_tags | length == 0 or 'start' in ansible_run_tags
+
+- name: Stop MySQL container
+  community.docker.docker_container:
+    name: "{{ mysql_container_name }}"
+    state: stopped
+  tags: [stop]
+  when: not ansible_check_mode
+
+- name: Restart MySQL container
+  command: "docker restart {{ mysql_container_name }}"
+  changed_when: true
+  tags: [restart]
+  when: not ansible_check_mode
+
+- name: Reload MySQL container
+  command: "docker kill --signal=HUP {{ mysql_container_name }}"
+  changed_when: true
+  tags: [reload]
+  when: not ansible_check_mode
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)

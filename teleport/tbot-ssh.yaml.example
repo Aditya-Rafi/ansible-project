@@ -1,0 +1,18 @@
+# tbot (Machine ID) untuk identitas SSH Ansible/Semaphore.
+# Menghasilkan ssh_config + known_hosts + cert di destination dir.
+# Setup:
+#   sudo tctl bots add ansible-bot --roles=ansible-ssh   # ambil token
+#   isi <BOT_TOKEN>, jalankan via systemd (teleport/systemd/tbot-ssh.service)
+version: v2
+proxy_server: 127.0.0.1:3080
+onboarding:
+  join_method: token
+  token: "<BOT_TOKEN_DARI_tctl_bots_add>"
+storage:
+  type: directory
+  path: /home/developer/teleport-ssh/bot-storage
+services:
+  - type: identity
+    destination:
+      type: directory
+      path: /home/developer/teleport-ssh/machine-id

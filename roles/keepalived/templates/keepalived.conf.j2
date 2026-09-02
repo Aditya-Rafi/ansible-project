@@ -29,7 +29,11 @@ vrrp_instance VI_{{ keepalived_router_id | default(51) }} {
 
   authentication {
     auth_type PASS
+<<<<<<< HEAD
     auth_pass {{ keepalived_auth_pass }}
+=======
+    auth_pass {{ keepalived_auth_pass | default('ChangeMeVRRP') }}
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
   }
 
   virtual_ipaddress {
@@ -40,3 +44,7 @@ vrrp_instance VI_{{ keepalived_router_id | default(51) }} {
     chk_nginx
   }
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)

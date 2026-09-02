@@ -1,0 +1,16 @@
+[Unit]
+Description=Teleport Machine ID (tbot) - SSH identity for Ansible/Semaphore
+After=network.target teleport.service
+
+[Service]
+Type=simple
+User=developer
+# --insecure hanya karena proxy memakai cert self-signed; hapus jika proxy
+# sudah memakai cert valid.
+ExecStart=/usr/local/bin/tbot start --config /home/developer/teleport-ssh/tbot-ssh.yaml --insecure
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

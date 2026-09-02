@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Ansible runtime/cache
 *.retry
 .ansible/
@@ -36,3 +37,72 @@ inventory/local*
 *.tar
 *.tar.gz
 *.zip
+=======
+# =============================================================================
+#  JANGAN PERNAH DI-COMMIT — repo ini publik
+# =============================================================================
+
+# --- Kredensial & konfigurasi berisi nilai asli ------------------------------
+/.env
+/.env.*
+!/.env.example
+!/.env.*.example
+*vault*.yml
+!*vault*.yml.example
+.vault_pass_file
+
+# Inventory asli: berisi IP internal + nama database (= nama klien)
+inventory/hosts.yaml
+inventory/*.local.yaml
+inventory/host_vars/
+inventory/group_vars/**/vault.yml
+
+# ssh_config Teleport: berisi IP proxy & path sertifikat host
+teleport.cfg
+teleport-docker.cfg
+
+# Config bot Teleport: berisi join token
+teleport/tbot-semaphore.yaml
+teleport/tbot-ssh.yaml
+teleport/tbot.yaml
+teleport/db-agent.yaml
+!teleport/*.example
+
+# Kunci & sertifikat
+*.pem
+*.key
+*.crt
+*-cert.pub
+id_rsa*
+id_ed25519*
+known_hosts
+machine-id/
+bot-storage/
+
+# --- Data produksi (paling berbahaya: isi database klien) --------------------
+*.sql
+*.sql.gz
+*.dump
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+/proaccounting/
+/testing/
+/backups/
+
+# --- Catatan privat / salinan pra-sanitasi -----------------------------------
+private/
+
+# --- Sampah editor & OS ------------------------------------------------------
+.~lock.*#
+*.bak
+*.orig
+*.swp
+*~
+.DS_Store
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)

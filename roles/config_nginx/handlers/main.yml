@@ -1,6 +1,7 @@
 - name: validate nginx configuration
   command: nginx -t
   changed_when: false
+<<<<<<< HEAD
   listen: reload nginx
   when: not ansible_check_mode
 
@@ -9,4 +10,12 @@
     name: nginx
     state: reloaded
   listen: reload nginx
+=======
+  when: ansible_check_mode
+
+- name: reload nginx
+  systemd:
+    name: nginx
+    state: reloaded
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
   when: not ansible_check_mode

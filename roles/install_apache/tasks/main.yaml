@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 - name : install Keepalived
   apt:
     name: keepalived
@@ -25,3 +26,8 @@
     name: keepalived
     state: started
     enabled: yes
+=======
+- name: Placeholder for Apache installation
+  debug:
+    msg: "Role install_apache belum digunakan. Keepalived HA ada di role keepalived."
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)

@@ -1,0 +1,13 @@
+[Unit]
+Description=Teleport Machine ID (tbot) - database tunnels for Semaphore
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tbot start --config /etc/tbot.yaml
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

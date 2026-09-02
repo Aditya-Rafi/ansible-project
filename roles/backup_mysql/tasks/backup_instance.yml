@@ -1,12 +1,39 @@
+<<<<<<< HEAD
 - name: "discover semua DB non-system dari port {{ _instance.port }}"
   shell: |
     mysql -h {{ mysql_host | quote }} -P {{ _instance.port | string | quote }} \
       -u {{ mysql_username | quote }} \
+=======
+- name: "resolve koneksi (teleport/langsung) port {{ _instance.port }}"
+  set_fact:
+    _via_teleport: "{{ _instance.teleport_local_port is defined }}"
+    _conn_host: "{{ '127.0.0.1' if _instance.teleport_local_port is defined else mysql_host }}"
+    _conn_port: "{{ _instance.teleport_local_port | default(_instance.port) }}"
+    _conn_user: "{{ _instance.teleport_db_user | default(mysql_username) }}"
+    _conn_password: "{{ '' if _instance.teleport_local_port is defined else mysql_password }}"
+
+- name: "info jalur koneksi port {{ _instance.port }}"
+  debug:
+    msg: >-
+      Port {{ _instance.port }} →
+      {{ 'via TELEPORT ' ~ _conn_host ~ ':' ~ _conn_port ~ ' (user ' ~ _conn_user ~ ', cert auth)'
+         if _via_teleport
+         else 'LANGSUNG ' ~ _conn_host ~ ':' ~ _conn_port ~ ' (user ' ~ _conn_user ~ ')' }}
+
+- name: "discover semua DB non-system dari port {{ _instance.port }}"
+  shell: |
+    mysql -h {{ _conn_host | quote }} -P {{ _conn_port | string | quote }} \
+      -u {{ _conn_user | quote }} \
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
       --batch --skip-column-names \
       -e "SHOW DATABASES WHERE \`Database\` NOT IN
           ('information_schema', 'performance_schema', 'sys', 'mysql')"
   environment:
+<<<<<<< HEAD
     MYSQL_PWD: "{{ mysql_password }}"
+=======
+    MYSQL_PWD: "{{ _conn_password }}"
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
   register: _discovered
   changed_when: false
   when: _instance.databases | string | lower == 'all'
@@ -32,17 +59,29 @@
 
 - name: "deteksi versi MySQL server port {{ _instance.port }}"
   shell: |
+<<<<<<< HEAD
     mysql -h {{ mysql_host | quote }} -P {{ _instance.port | string | quote }} \
       -u {{ mysql_username | quote }} \
       --batch --skip-column-names -e "SELECT VERSION()"
   environment:
     MYSQL_PWD: "{{ mysql_password }}"
+=======
+    mysql -h {{ _conn_host | quote }} -P {{ _conn_port | string | quote }} \
+      -u {{ _conn_user | quote }} \
+      --batch --skip-column-names -e "SELECT VERSION()"
+  environment:
+    MYSQL_PWD: "{{ _conn_password }}"
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
   register: _server_version
   changed_when: false
 
 - name: "pilih image client mysqldump sesuai versi server (port {{ _instance.port }})"
   set_fact:
+<<<<<<< HEAD
     _client_image: "{{ 'mysql:8.0' if (_server_version.stdout | trim | split('.') | first | int) >= 8 else 'mysql:5.7' }}"
+=======
+    _client_image: "{{ 'mysql:8.0' if ((_server_version.stdout | trim).split('.') | first | int) >= 8 else 'mysql:5.7' }}"
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
 
 - name: "info versi & client (port {{ _instance.port }})"
   debug:

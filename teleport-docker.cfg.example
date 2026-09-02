@@ -1,0 +1,16 @@
+# CONTOH — salin ke teleport-docker.cfg lalu ganti: CLUSTER, PROXY_HOST, PROXY_ALIAS, USER.
+# ssh_config untuk Ansible DI DALAM container Semaphore (Convention Y).
+# Sertifikat di /teleport-id/machine-id digenerate oleh sidecar tbot (volume bersama).
+# Binary tbot di-mount ke /usr/local/bin/tbot. Proxy via alias 'PROXY_ALIAS' (extra_hosts → PROXY_HOST).
+# Disuntik ke Ansible lewat Environment Semaphore:
+#   ANSIBLE_SSH_ARGS = -F /home/semaphore/ansible/teleport-docker.cfg
+# ProxyCommand WAJIB satu baris (ssh_config tidak mengenal line-continuation '\').
+# --insecure dipakai bila proxy memakai cert self-signed; aman dibiarkan.
+Host *.CLUSTER PROXY_ALIAS
+    UserKnownHostsFile "/teleport-id/machine-id/known_hosts"
+    IdentityFile "/teleport-id/machine-id/key"
+    CertificateFile "/teleport-id/machine-id/key-cert.pub"
+
+Host *.CLUSTER !PROXY_ALIAS
+    Port 3022
+    ProxyCommand /usr/local/bin/tbot ssh-proxy-command --destination-dir=/teleport-id/machine-id --proxy-server=PROXY_HOST:3080 --cluster=CLUSTER --tls-routing --no-connection-upgrade --resume --insecure --user=%r --host=%h --port=%p

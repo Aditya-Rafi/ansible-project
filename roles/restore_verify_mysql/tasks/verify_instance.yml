@@ -1,3 +1,14 @@
+<<<<<<< HEAD
+=======
+- name: "resolve koneksi original (teleport/langsung) port {{ _instance.port }}"
+  set_fact:
+    _via_teleport: "{{ _instance.teleport_local_port is defined }}"
+    _conn_host: "{{ '127.0.0.1' if _instance.teleport_local_port is defined else mysql_host }}"
+    _conn_port: "{{ _instance.teleport_local_port | default(_instance.port) }}"
+    _conn_user: "{{ _instance.teleport_db_user | default(mysql_username) }}"
+    _conn_password: "{{ '' if _instance.teleport_local_port is defined else mysql_password }}"
+
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
 - name: "temukan semua file backup untuk port {{ _instance.port }}"
   find:
     paths: /opt/backups/mysql/
@@ -47,11 +58,19 @@
 
 - name: "ambil versi MySQL dari port {{ _instance.port }}"
   shell: |
+<<<<<<< HEAD
     mysql -h {{ mysql_host | quote }} -P {{ _instance.port | string | quote }} \
       -u {{ mysql_username | quote }} \
       -N -B -e "SELECT VERSION();"
   environment:
     MYSQL_PWD: "{{ mysql_password }}"
+=======
+    mysql -h {{ _conn_host | quote }} -P {{ _conn_port | string | quote }} \
+      -u {{ _conn_user | quote }} \
+      -N -B -e "SELECT VERSION();"
+  environment:
+    MYSQL_PWD: "{{ _conn_password }}"
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
   register: _mysql_version_raw
   changed_when: false
 

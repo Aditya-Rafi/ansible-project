@@ -1,0 +1,40 @@
+# Agen Teleport Database Service — mendaftarkan MySQL 3308 & 3309.
+# Berjalan sebagai proses TERPISAH dengan data_dir sendiri, sehingga TIDAK
+# menyentuh /etc/teleport.yaml cluster utama (auth/proxy/ssh).
+#
+# Setup:
+#   1. token: sudo tctl tokens add --type=db --ttl=1h
+#   2. ca_pin: ambil dari `sudo tctl status` (baris "CA pin")
+#   3. salin ke /etc/teleport-db-agent.yaml, isi <TOKEN>, jalankan via systemd.
+#
+# Catatan: db_service WAJIB join via proxy_server (bukan auth_server).
+version: v3
+teleport:
+  nodename: db-agent-prod
+  data_dir: /var/lib/teleport-db-agent
+  auth_token: "<TOKEN_DARI_tctl_tokens_add>"
+  proxy_server: 127.0.0.1:3080
+  ca_pin: "sha256:<ISI_DARI_tctl_status>"
+auth_service:
+  enabled: "no"
+proxy_service:
+  enabled: "no"
+ssh_service:
+  enabled: "no"
+db_service:
+  enabled: "yes"
+  databases:
+    - name: mysql-3308
+      protocol: mysql
+      uri: "192.0.2.30:3308"
+      tls:
+        mode: verify-ca
+      static_labels:
+        env: prod
+    - name: mysql-3309
+      protocol: mysql
+      uri: "192.0.2.30:3309"
+      tls:
+        mode: verify-ca
+      static_labels:
+        env: prod

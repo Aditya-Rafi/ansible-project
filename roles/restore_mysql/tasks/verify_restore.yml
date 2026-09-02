@@ -12,10 +12,17 @@
       --orig-user "root" \
       --orig-password "" \
       --orig-db {{ _db | quote }} \
+<<<<<<< HEAD
       --dest-host {{ mysql_host | quote }} \
       --dest-port {{ _instance.port | string | quote }} \
       --dest-user {{ mysql_username | quote }} \
       --dest-password {{ mysql_password | quote }} \
+=======
+      --dest-host {{ _conn_host | quote }} \
+      --dest-port {{ _conn_port | string | quote }} \
+      --dest-user {{ _conn_user | quote }} \
+      --dest-password {{ _conn_password | quote }} \
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
       --dest-db {{ _db | quote }}
   register: _verify_result
   failed_when: _verify_result.rc not in [0, 1, 2]

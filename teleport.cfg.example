@@ -1,0 +1,15 @@
+# CONTOH — salin ke teleport.cfg lalu ganti: CLUSTER, PROXY_HOST, PROXY_ALIAS, USER.
+# ssh_config untuk Ansible DI HOST — bukan container (Convention Y).
+# Default di ansible.cfg: ssh_args = -F ./teleport.cfg
+# Sertifikat di /home/USER/teleport-ssh/machine-id digenerate tbot host (systemd tbot-ssh).
+# Proxy via alias 'PROXY_ALIAS' (tambahkan ke /etc/hosts host bila perlu: PROXY_HOST PROXY_ALIAS).
+# ProxyCommand WAJIB satu baris (ssh_config tidak mengenal line-continuation '\').
+# --insecure dipakai bila proxy memakai cert self-signed; aman dibiarkan.
+Host *.CLUSTER PROXY_ALIAS
+    UserKnownHostsFile "/home/USER/teleport-ssh/machine-id/known_hosts"
+    IdentityFile "/home/USER/teleport-ssh/machine-id/key"
+    CertificateFile "/home/USER/teleport-ssh/machine-id/key-cert.pub"
+
+Host *.CLUSTER !PROXY_ALIAS
+    Port 3022
+    ProxyCommand /usr/local/bin/tbot ssh-proxy-command --destination-dir=/home/USER/teleport-ssh/machine-id --proxy-server=PROXY_HOST:3080 --cluster=CLUSTER --tls-routing --no-connection-upgrade --resume --insecure --user=%r --host=%h --port=%p

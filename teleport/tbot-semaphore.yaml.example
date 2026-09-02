@@ -1,0 +1,13 @@
+version: v2
+proxy_server: 192.0.2.20:3080
+onboarding:
+  join_method: token
+  token: "<BOT_TOKEN_DARI_tctl_bots_add>"
+storage:
+  type: directory
+  path: /teleport-id/bot-storage
+services:
+  - type: identity
+    destination:
+      type: directory
+      path: /teleport-id/machine-id

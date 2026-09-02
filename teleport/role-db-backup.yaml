@@ -1,0 +1,12 @@
+kind: role
+version: v7
+metadata:
+  name: db-backup
+spec:
+  allow:
+    db_labels:
+      env: ['prod']
+    db_names: ['*']
+    db_users: ['teleport-backup']
+  options:
+    max_session_ttl: 8h

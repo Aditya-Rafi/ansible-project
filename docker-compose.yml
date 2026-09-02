@@ -1,21 +1,53 @@
+<<<<<<< HEAD
 version: '3.8'
+=======
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
 
 services:
   semaphore:
     image: semaphoreui/semaphore:latest
     container_name: semaphore
+<<<<<<< HEAD
+=======
+    user: "0:0"                            # root — bisa baca cert tbot (root) di volume bersama
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
     ports:
       - "3001:3000"
     env_file:
       - .env.semaphore
     extra_hosts:
       - "host.docker.internal:host-gateway"
+<<<<<<< HEAD
+=======
+      - "${TELEPORT_PROXY_ALIAS:?set di .env}:${TELEPORT_PROXY_HOST:?set di .env}"
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
     depends_on:
       - db
     restart: unless-stopped
     volumes:
       - semaphore_data:/var/lib/semaphore
       - .:/home/semaphore/ansible
+<<<<<<< HEAD
+=======
+      # Teleport: binary (static, jalan di Alpine) + sertifikat dari sidecar
+      - /opt/teleport/system/bin/tbot:/usr/local/bin/tbot:ro
+      - teleport_id:/teleport-id:ro
+
+  # Sidecar Machine ID: jaga sertifikat SSH Teleport tetap segar di volume bersama
+  tbot:
+    image: alpine:3.21
+    container_name: semaphore-tbot
+    user: "0:0"                            # root — hindari "unknown userid 1001"; root nulis, root baca
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "${TELEPORT_PROXY_ALIAS:?set di .env}:${TELEPORT_PROXY_HOST:?set di .env}"
+    volumes:
+      - /opt/teleport/system/bin/tbot:/usr/local/bin/tbot:ro
+      - teleport_id:/teleport-id
+      - ./teleport/tbot-semaphore.yaml:/etc/tbot.yaml:ro
+    command: ["/usr/local/bin/tbot", "start", "-c", "/etc/tbot.yaml", "--insecure"]
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
 
   db:
     image: postgres:14
@@ -31,7 +63,10 @@ services:
     container_name: semaphore-provisioner
     env_file:
       - .env.semaphore
+<<<<<<< HEAD
       - .env.vault
+=======
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
     volumes:
       - ./provision:/provision:ro
       - .:/home/semaphore/ansible:ro
@@ -42,3 +77,7 @@ services:
 volumes:
   semaphore_data:
   semaphore_db:
+<<<<<<< HEAD
+=======
+  teleport_id:
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)

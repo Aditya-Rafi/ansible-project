@@ -1,0 +1,54 @@
+# Salin ke inventory/hosts.yaml lalu isi nilai asli (file asli di-gitignore).
+#
+# ansible_host memakai format <nodename>.<cluster> Teleport:
+#   nodename = 'nodename' di /etc/teleport.yaml, cluster = cluster_name
+#   cek: sudo tctl nodes ls
+# SSH args di-set di ansible.cfg (host) / Environment Semaphore (container).
+# JANGAN menambahkan ansible_ssh_common_args di sini — menimpanya memicu jalur
+# SSH lama yang gagal ("hostname contains invalid characters").
+all:
+  vars:
+    ansible_user: root
+    ansible_python_interpreter: /usr/bin/python3
+
+  children:
+    # Node target backup: host yang menjalankan mysqldump (via Docker) ke MySQL produksi.
+    db_server:
+      hosts:
+        dev-db:
+          ansible_host: NODE.CLUSTER          # mis. master.example-cluster
+          ansible_connection: ssh
+
+          # --- switch role backup/restore/verify ---
+          database_server: mysql
+          enable_backup: true
+
+          # --- MySQL produksi (koneksi langsung dari node target) ---
+          mysql_host: 192.0.2.30              # IP server MySQL
+          mysql_username: "root"
+          mysql_password: "{{ vault_mysql_password }}"   # inventory/group_vars/all/vault.yml
+
+          # --- instance yang di-backup ---
+          # databases: daftar dipisah koma, atau "all" untuk semua DB non-system.
+          # HATI-HATI: "all" pada server dengan ratusan database berarti dump puluhan GB.
+          mysql_instances:
+            - port: 3308                      # MySQL 5.7 → client mysqldump mysql:5.7 (otomatis)
+              databases: "demo_erpdb,demo_erpaccdb"
+
+            # - port: 3309                    # MySQL 8.3 → client mysql:8.0
+            #   databases: "demo_accountingdb"
+
+            # - port: 3307                    # MySQL 5.1 — client mysql/mysqldump 8.x DITOLAK
+            #   databases: "demo_legacydb"    # butuh client 5.1/MariaDB lama
+
+    # Control node = host tempat stack Semaphore (Docker) berjalan.
+    control_nodes:
+      hosts:
+        localhost:
+          ansible_connection: local
+
+    # Node aplikasi (nginx + keepalived) — aktifkan bila dipakai.
+    # app_server:
+    #   hosts:
+    #     dev-apps:
+    #       ansible_host: NODE.CLUSTER

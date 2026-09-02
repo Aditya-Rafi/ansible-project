@@ -1,0 +1,29 @@
+# Konfigurasi tbot (Machine ID) untuk host Semaphore.
+# Membuka tunnel database lokal sehingga Ansible/mysqldump konek ke
+# 127.0.0.1:1330x tanpa password (auth via sertifikat pendek yang di-renew tbot).
+#
+# Setup:
+#   1. bot + token: sudo tctl bots add semaphore-backup --roles=db-backup
+#   2. salin ke /etc/tbot.yaml, isi <BOT_TOKEN>, jalankan via systemd.
+#
+# 'service' = nama database di db-agent.yaml; 'username' = teleport_db_user
+# (harus cocok dgn CN user REQUIRE SUBJECT di MySQL).
+version: v2
+proxy_server: 127.0.0.1:3080
+onboarding:
+  join_method: token
+  token: "<BOT_TOKEN_DARI_tctl_bots_add>"
+storage:
+  type: directory
+  path: /var/lib/tbot
+services:
+  - type: database-tunnel
+    listen: tcp://127.0.0.1:13308
+    service: mysql-3308
+    database: demo_erpdb
+    username: teleport-backup
+  - type: database-tunnel
+    listen: tcp://127.0.0.1:13309
+    service: mysql-3309
+    database: demo_accountingdb
+    username: teleport-backup

@@ -125,10 +125,17 @@
 - name: "verifikasi 1:1 {{ db_name }} (backup vs original)"
   shell: |
     /tmp/verify_mysql_integrity.py \
+<<<<<<< HEAD
       --orig-host {{ mysql_host | quote }} \
       --orig-port {{ _instance.port | string | quote }} \
       --orig-user {{ mysql_username | quote }} \
       --orig-password {{ mysql_password | quote }} \
+=======
+      --orig-host {{ _conn_host | quote }} \
+      --orig-port {{ _conn_port | string | quote }} \
+      --orig-user {{ _conn_user | quote }} \
+      --orig-password {{ _conn_password | quote }} \
+>>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
       --orig-db {{ db_name | quote }} \
       --dest-host "127.0.0.1" \
       --dest-port {{ _verify_port | string | quote }} \

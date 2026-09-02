@@ -1,0 +1,11 @@
+kind: role
+version: v7
+metadata:
+  name: ansible-ssh
+spec:
+  allow:
+    logins: ['root', 'developer']
+    node_labels:
+      '*': ['*']
+  options:
+    max_session_ttl: 12h
