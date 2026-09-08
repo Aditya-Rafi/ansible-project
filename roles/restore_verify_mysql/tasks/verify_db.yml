@@ -1,6 +1,6 @@
 - name: "cari backup terbaru untuk {{ db_name }} port {{ _instance.port }}"
   find:
-    paths: /opt/backups/mysql/
+    paths: "{{ mysql_backup_dir }}"
     patterns: "backup-{{ db_name }}-{{ _instance.port }}-*.sql"
     file_type: file
   register: backup_files
@@ -9,7 +9,7 @@
   assert:
     that:
       - backup_files.files | length > 0
-    fail_msg: "Tidak ada backup untuk '{{ db_name }}' port {{ _instance.port }} di /opt/backups/mysql/"
+    fail_msg: "Tidak ada backup untuk '{{ db_name }}' port {{ _instance.port }} di {{ mysql_backup_dir }}/"
 
 - name: "set path backup terbaru untuk {{ db_name }}:{{ _instance.port }}"
   set_fact:

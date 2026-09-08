@@ -1,0 +1,2 @@
+# Harus sama dengan backup_mysql — verifikasi membaca dump dari direktori ini.
+mysql_backup_dir: "/opt/backups/mysql/{{ inventory_hostname }}"

@@ -1,0 +1,9 @@
+# Direktori backup dipisah per host inventory. Nama file backup berpola
+# backup-<db>-<port>-<timestamp>.sql — tanpa identitas server. Karena kelima
+# server produksi sama-sama memakai port 3306, satu direktori bersama akan
+# membuat verifikasi salah mencocokkan dump milik server lain.
+mysql_backup_dir: "/opt/backups/mysql/{{ inventory_hostname }}"
+
+# Menyamakan perilaku dengan setup automysqlbackup lama (MAX_ALLOWED_PACKET).
+# mysqldump gagal di tengah dump bila ada row/blob melebihi nilai ini.
+mysql_max_allowed_packet: "1024M"

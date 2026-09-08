@@ -1,7 +1,7 @@
 - name: buat direktori backup
   become: true
   file:
-    path: /opt/backups/mysql
+    path: "{{ mysql_backup_dir }}"
     state: directory
     owner: root
     group: root

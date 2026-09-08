@@ -1,2 +1,5 @@
 restore_backup_file: ""    # kosong = otomatis pilih backup terbaru
 restore_run_verify: true   # jalankan verifikasi setelah restore
+
+# Harus sama dengan backup_mysql — restore membaca dump dari direktori ini.
+mysql_backup_dir: "/opt/backups/mysql/{{ inventory_hostname }}"

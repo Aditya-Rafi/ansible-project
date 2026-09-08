@@ -1,54 +1,89 @@
-# Salin ke inventory/hosts.yaml lalu isi nilai asli (file asli di-gitignore).
+# Salin ke inventory/hosts.yaml lalu isi nilai asli.
+# inventory/hosts.yaml di-gitignore — IP & user produksi TIDAK pernah di-commit.
+# Password selalu lewat vault: inventory/group_vars/all/vault.yml (juga ignored).
 #
-# ansible_host memakai format <nodename>.<cluster> Teleport:
+# POLA: satu host Ansible per SERVER MySQL, bukan satu host dengan banyak port.
+# Alasannya, nama file dump berpola backup-<db>-<port>-<ts>.sql dan tidak memuat
+# identitas server. Bila beberapa server sama-sama memakai port 3306 dan menulis
+# ke direktori yang sama, verifikasi akan mencocokkan dump milik server lain.
+# Pemisahan per host membuat mysql_backup_dir otomatis jadi
+# /opt/backups/mysql/<inventory_hostname> (lihat roles/backup_mysql/defaults).
+#
+# ansible_host bisa berupa IP langsung, atau format <nodename>.<cluster> Teleport
 #   nodename = 'nodename' di /etc/teleport.yaml, cluster = cluster_name
 #   cek: sudo tctl nodes ls
 # SSH args di-set di ansible.cfg (host) / Environment Semaphore (container).
 # JANGAN menambahkan ansible_ssh_common_args di sini — menimpanya memicu jalur
 # SSH lama yang gagal ("hostname contains invalid characters").
 all:
-  vars:
-    ansible_user: root
-    ansible_python_interpreter: /usr/bin/python3
-
   children:
-    # Node target backup: host yang menjalankan mysqldump (via Docker) ke MySQL produksi.
-    db_server:
-      hosts:
-        dev-db:
-          ansible_host: NODE.CLUSTER          # mis. master.example-cluster
-          ansible_connection: ssh
 
-          # --- switch role backup/restore/verify ---
-          database_server: mysql
-          enable_backup: true
+    # ── Node eksekutor: mesin yang menjalankan mysqldump via Docker ─────────
+    # Semua entri di bawah menunjuk mesin yang SAMA; yang berbeda hanya
+    # server MySQL tujuan (mysql_host) dan kredensialnya.
+    teleport_nodes:
+      vars:
+        ansible_host: 192.0.2.10          # IP node, atau NODE.CLUSTER (Teleport)
+        ansible_port: 22
+        ansible_user: "developer"
+        ansible_password: "{{ vault_ansible_password }}"
+        ansible_become: true
+        ansible_become_method: sudo
+        ansible_become_user: root
+        database_server: mysql            # switch role backup/restore/verify
 
-          # --- MySQL produksi (koneksi langsung dari node target) ---
-          mysql_host: 192.0.2.30              # IP server MySQL
-          mysql_username: "root"
-          mysql_password: "{{ vault_mysql_password }}"   # inventory/group_vars/all/vault.yml
+      children:
 
-          # --- instance yang di-backup ---
-          # databases: daftar dipisah koma, atau "all" untuk semua DB non-system.
-          # HATI-HATI: "all" pada server dengan ratusan database berarti dump puluhan GB.
-          mysql_instances:
-            - port: 3308                      # MySQL 5.7 → client mysqldump mysql:5.7 (otomatis)
-              databases: "demo_erpdb,demo_erpaccdb"
+        # Server MySQL produksi yang di-backup & diverifikasi.
+        # databases: "db1,db2" untuk daftar spesifik, atau "all" untuk semua
+        # schema non-system. HATI-HATI: "all" pada server dengan ratusan
+        # database berarti dump puluhan GB.
+        mysql_prod:
+          vars:
+            enable_backup: true
+          hosts:
+            contoh-server-a:
+              mysql_host: 192.0.2.30
+              mysql_username: "backup"
+              mysql_password: "{{ vault_mysql_password_a }}"
+              mysql_instances:
+                - port: 3306
+                  databases: all
 
-            # - port: 3309                    # MySQL 8.3 → client mysql:8.0
-            #   databases: "demo_accountingdb"
+            # Server kedua dengan kredensial berbeda — cukup tambah host baru.
+            contoh-server-b:
+              mysql_host: 192.0.2.31
+              mysql_username: "contoh-user-b"
+              mysql_password: "{{ vault_mysql_password_b }}"
+              mysql_instances:
+                - port: 3306
+                  databases: "demo_erpdb,demo_erpaccdb"
 
-            # - port: 3307                    # MySQL 5.1 — client mysql/mysqldump 8.x DITOLAK
-            #   databases: "demo_legacydb"    # butuh client 5.1/MariaDB lama
+            # Satu server dengan BEBERAPA port MySQL tetap didukung: cukup
+            # tambahkan entri pada mysql_instances (semua berbagi kredensial
+            # dan direktori host ini). Client mysqldump dipilih otomatis dari
+            # versi server: 5.x → mysql:5.7, 8.x → mysql:8.0.
+            # contoh-server-c:
+            #   mysql_host: 192.0.2.32
+            #   mysql_username: "root"
+            #   mysql_password: "{{ vault_mysql_password }}"
+            #   mysql_instances:
+            #     - port: 3308
+            #       databases: "demo_erpdb"
+            #     - port: 3309
+            #       databases: "demo_accountingdb"
 
-    # Control node = host tempat stack Semaphore (Docker) berjalan.
+        # Node eksekutor itu sendiri — tidak di-backup.
+        # Hanya target playbook/database/main.yml (provisioning MySQL lokal).
+        control:
+          vars:
+            enable_backup: false
+          hosts:
+            dev-db:
+
+    # ── Host tempat stack Semaphore (Docker) berjalan ───────────────────────
+    # Dipakai playbook/dashboard-ui/*.yml (hosts: control_nodes).
     control_nodes:
       hosts:
         localhost:
           ansible_connection: local
-
-    # Node aplikasi (nginx + keepalived) — aktifkan bila dipakai.
-    # app_server:
-    #   hosts:
-    #     dev-apps:
-    #       ansible_host: NODE.CLUSTER

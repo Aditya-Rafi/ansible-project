@@ -73,7 +73,7 @@
 - name: "cari backup lama (>7 hari) untuk port {{ _instance.port }}"
   become: true
   find:
-    paths: /opt/backups/mysql
+    paths: "{{ mysql_backup_dir }}"
     patterns: "backup-*-{{ _instance.port }}-*.sql"
     age: 7d
     recurse: false

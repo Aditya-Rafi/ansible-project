@@ -2,8 +2,8 @@
   become: true
   shell: |
     set -o pipefail
-    backup_file="/opt/backups/mysql/backup-{{ _db }}-{{ _instance.port }}-$(date +%Y-%m-%dT%H-%M-%S).sql"
-    tmp_file="$(mktemp /opt/backups/mysql/backup-XXXXXX.sql)"
+    backup_file="{{ mysql_backup_dir }}/backup-{{ _db }}-{{ _instance.port }}-$(date +%Y-%m-%dT%H-%M-%S).sql"
+    tmp_file="$(mktemp {{ mysql_backup_dir }}/backup-XXXXXX.sql)"
     err_file="${tmp_file}.err"
 
     # Client mysqldump dipilih sesuai versi server ({{ _client_image }}):
@@ -19,6 +19,7 @@
         --single-transaction \
         --skip-lock-tables \
         --quick \
+        --max-allowed-packet={{ mysql_max_allowed_packet }} \
         --skip-triggers \
         --host={{ _conn_host | quote }} \
         --port={{ _conn_port | string }} \

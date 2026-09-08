@@ -8,7 +8,7 @@
 
 - name: "temukan semua file backup untuk port {{ _instance.port }}"
   find:
-    paths: /opt/backups/mysql/
+    paths: "{{ mysql_backup_dir }}"
     patterns: "backup-*-{{ _instance.port }}-*.sql"
     file_type: file
   register: _found_backups

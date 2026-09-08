@@ -8,7 +8,7 @@
 
 - name: "temukan semua file backup untuk port {{ _instance.port }}"
   find:
-    paths: /opt/backups/mysql/
+    paths: "{{ mysql_backup_dir }}"
     patterns: "backup-*-{{ _instance.port }}-*.sql"
     file_type: file
   register: _found_backups
@@ -46,7 +46,7 @@
 
 - name: "set verification container name (port {{ _instance.port }})"
   set_fact:
-    _verify_container: "temp-verify-{{ _instance.port }}-{{ _verify_ts_cmd.stdout }}"
+    _verify_container: "temp-verify-{{ inventory_hostname }}-{{ _instance.port }}-{{ _verify_ts_cmd.stdout }}"
 
 - name: "hapus container verifikasi lama jika ada (port {{ _instance.port }})"
   shell: "docker rm -f {{ _verify_container }}"
