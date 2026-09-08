@@ -1,9 +1,5 @@
-<<<<<<< HEAD
-mysql_root_password: "{{ lookup('env', 'MYSQL_ROOT_PASSWORD') | default('change-me-mysql-root', true) }}"
-=======
 # WAJIB di-override lewat vault/extra-vars — jangan pakai nilai ini di lingkungan nyata.
 mysql_root_password: "CHANGE_ME"
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
 mysql_container_name: mysql
 mysql_image: mysql:8.0
 mysql_host_port: 3306

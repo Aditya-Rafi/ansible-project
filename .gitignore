@@ -1,43 +1,3 @@
-<<<<<<< HEAD
-# Ansible runtime/cache
-*.retry
-.ansible/
-fact_cache/
-
-# Python cache
-__pycache__/
-*.py[cod]
-
-# Logs/temp files
-*.log
-*.tmp
-*.swp
-*~
-
-# OS/editor metadata
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-
-# Secrets and local overrides
-*.vault
-*.vault.yml
-*.vault.yaml
-*.secret
-*.secrets
-.env
-.env.semaphore
-vault.yml
-inventory/*vault*
-inventory/*secret*
-inventory/local*
-
-# Generated archives
-*.tar
-*.tar.gz
-*.zip
-=======
 # =============================================================================
 #  JANGAN PERNAH DI-COMMIT — repo ini publik
 # =============================================================================
@@ -105,4 +65,23 @@ __pycache__/
 *.pyc
 .idea/
 .vscode/
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
+
+# --- dipertahankan dari main upstream (kontrak sanitasi repo publik) ---
+*.log
+*.py[cod]
+*.retry
+*.secret
+*.secrets
+*.tmp
+*.vault
+*.vault.yaml
+*.vault.yml
+.ansible/
+.env
+.env.semaphore
+Thumbs.db
+fact_cache/
+inventory/*secret*
+inventory/*vault*
+inventory/local*
+vault.yml

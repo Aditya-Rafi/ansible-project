@@ -20,15 +20,9 @@
         --skip-lock-tables \
         --quick \
         --skip-triggers \
-<<<<<<< HEAD
-        --host={{ mysql_host | quote }} \
-        --port={{ _instance.port | string }} \
-        --user={{ mysql_username | quote }} \
-=======
         --host={{ _conn_host | quote }} \
         --port={{ _conn_port | string }} \
         --user={{ _conn_user | quote }} \
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
       > "$tmp_file" 2> "$err_file"
     rc=$?
 
@@ -49,11 +43,7 @@
   args:
     executable: /bin/bash
   environment:
-<<<<<<< HEAD
-    MYSQL_PWD: "{{ mysql_password }}"
-=======
     MYSQL_PWD: "{{ _conn_password }}"
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
   register: _backup_result
 
 - name: "set path backup terbaru {{ _db }}:{{ _instance.port }}"

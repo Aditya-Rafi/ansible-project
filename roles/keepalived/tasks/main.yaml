@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-- name : Install Keepalived
-=======
 - name: Install Keepalived
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
   apt:
     name: keepalived
     state: present
@@ -11,11 +7,7 @@
 - name: Enable non-local bind for VRRP virtual IP
   sysctl:
     name: net.ipv4.ip_nonlocal_bind
-<<<<<<< HEAD
-    value: '1'
-=======
     value: "1"
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
     state: present
     reload: yes
 
@@ -25,11 +17,7 @@
     dest: /etc/keepalived/keepalived.conf
     owner: root
     group: root
-<<<<<<< HEAD
-    mode: '0644'
-=======
     mode: "0644"
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
   notify: restart keepalived
 
 - name: Start Keepalived
@@ -37,7 +25,4 @@
     name: keepalived
     state: started
     enabled: yes
-<<<<<<< HEAD
-=======
   when: not ansible_check_mode
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)

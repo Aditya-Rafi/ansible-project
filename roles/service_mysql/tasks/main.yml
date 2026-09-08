@@ -1,33 +1,3 @@
-<<<<<<< HEAD
-- name: Start MySQL service
-  service:
-    name: mysql
-    state: started
-    enabled: yes
-  tags: [start]
-  when: ansible_run_tags | length == 0 or 'start' in ansible_run_tags
-
-- name: Stop MySQL service
-  service:
-    name: mysql
-    state: stopped
-    enabled: yes
-  tags: [stop]
-
-- name: Restart MySQL service
-  service:
-    name: mysql
-    state: restarted
-    enabled: yes
-  tags: [restart]
-
-- name: Reload MySQL service
-  service:
-    name: mysql
-    state: reloaded
-    enabled: yes
-  tags: [reload]
-=======
 - name: Start MySQL container
   community.docker.docker_container:
     name: "{{ mysql_container_name }}"
@@ -57,4 +27,3 @@
   changed_when: true
   tags: [reload]
   when: not ansible_check_mode
->>>>>>> 1714484 (Ansible + Teleport + Semaphore: backup/restore/verify MySQL)
