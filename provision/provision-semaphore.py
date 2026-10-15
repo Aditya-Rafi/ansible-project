@@ -57,9 +57,25 @@ TEMPLATES = [
         "description": (
             "mysqldump semua database di mysql_instances (client versi-aware), "
             "assert footer 'Dump completed' + jumlah CREATE TABLE, tulis .sha256. "
-            "Hasil di /opt/backups/mysql pada node target."
+            "Hasil di /opt/backups/mysql/<host> pada node target. File > N hari "
+            "(default 5) dihapus otomatis. Satu DB gagal tidak menghentikan DB lain."
         ),
-        "survey_vars": [],
+        "survey_vars": [
+            {
+                "name": "backup_databases",
+                "title": "Database (kosongkan = ikut inventory)",
+                "description": "'all' atau daftar dipisah koma, mis. db1,db2",
+                "type": "",
+                "required": False,
+            },
+            {
+                "name": "backup_retention_days",
+                "title": "Retensi hari (kosongkan = 5)",
+                "description": "File backup lebih tua dari N hari dihapus. 0 = jangan hapus.",
+                "type": "int",
+                "required": False,
+            },
+        ],
         "schedule": BACKUP_CRON,
     },
     {
@@ -245,7 +261,12 @@ def main():
         {
             "project_id": pid,
             "name": ENV_NAME,
-            "json": "{}",
+            # backup_bot_url hanya diisi bila bot Telegram dikonfigurasi
+            "json": json.dumps(
+                {"backup_bot_url": "http://backup-bot:8080"}
+                if os.getenv("TELEGRAM_BOT_TOKEN")
+                else {}
+            ),
             "env": json.dumps({"ANSIBLE_SSH_ARGS": f"-F {SSH_CONFIG_IN_CONTAINER}"}),
         },
         f"Environment '{ENV_NAME}'",

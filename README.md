@@ -80,6 +80,79 @@ ansible-playbook playbook/backups/backup_mysql.yml
 ./teleport-backup-ready.sh backup                       # refresh cert + backup sekaligus
 ```
 
+## Mengatur backup (cepat)
+
+| Mau | Cara |
+|---|---|
+| Backup **semua** DB | inventory: `databases: all` — atau sekali jalan `-e backup_databases=all` |
+| Backup **satu/beberapa** DB | inventory: `databases: "db1,db2"` — atau `-e backup_databases=db1` |
+| Semua DB **kecuali** beberapa | `databases: all` + `exclude_databases: "db_besar"` (atau `-e backup_exclude_databases=db_besar`) |
+| Hanya satu server | `--limit nama-host` (di Semaphore: kolom *Limit*) |
+| Ubah retensi | `mysql_backup_retention_days: 5` (inventory) atau `-e backup_retention_days=3`; `0` = nonaktif |
+
+Di dashboard, template **Backup MySQL** punya form isian *Database* dan *Retensi*
+(kosongkan = ikut inventory).
+
+Perilaku run:
+
+- **Retensi:** setiap run menghapus semua `backup-*` (`.sql`, `.sha256`, `.err`) yang
+  lebih tua dari 5 hari di folder host, apa pun isinya dan walau tidak ada backup
+  penggantinya. Pastikan salinan penting disimpan di tempat lain.
+- **Tahan gagal:** satu DB gagal tidak menghentikan DB lain. Dump yang terputus
+  (`2013 Lost connection`) diulang otomatis 2×. Di akhir ada ringkasan ✔/✘ per DB
+  dan run ditandai gagal bila ada yang ✘, jadi yang perlu dibackup manual langsung
+  terlihat.
+- Opsi lanjutan (`defaults/main.yml`): `mysql_backup_retries`, `mysql_dump_extra_args`.
+
+## Notifikasi Telegram + backup ulang dengan persetujuan manusia
+
+Bila ada DB gagal di-backup, bot mengirim pesan Telegram berisi server, DB, versi
+MySQL, dan **log penyebab**, dengan tiga tombol:
+
+| Tombol | Aksi |
+|---|---|
+| 🟢 Backup | menjalankan template *Backup MySQL* di Semaphore hanya untuk DB itu (`backup_databases`, `backup_ports`, `--limit` host). Setelah selesai bot melapor **sukses** atau **gagal lagi** + log |
+| ⚪ Tunda | pesan muncul lagi setelah `BOT_SNOOZE_MINUTES` (default 60) |
+| 🔴 Batal | ditutup, tidak ada aksi |
+
+Bila lebih dari satu DB gagal, ada pesan tambahan dengan tombol yang sama untuk
+semuanya. Hanya `TELEGRAM_ALLOWED_USER_IDS` (default: `TELEGRAM_CHAT_ID`) yang
+boleh menekan tombol.
+
+Setup:
+
+1. Buat bot lewat @BotFather → salin token. Kirim satu pesan ke bot, lalu ambil chat id Anda
+   (mis. @userinfobot).
+2. Isi `.env.semaphore`: `TELEGRAM_BOT_TOKEN=...` dan `TELEGRAM_CHAT_ID=...`
+3. `docker compose up -d backup-bot` lalu jalankan ulang provisioner
+   (`docker compose run --rm provisioner`) agar Environment Semaphore mendapat
+   `backup_bot_url`. Tanpa token, notifikasi nonaktif dan backup berjalan seperti biasa.
+
+Catatan: bot memakai *long-polling* (tanpa port publik) sehingga tombol hanya bekerja
+saat PC ini menyala.
+
+### Cek stack automysqlbackup di Portainer (Senin–Jumat 08:00 WIB)
+
+Setiap hari kerja (`BOT_CHECK_DAYS`, default Senin–Jumat) pukul `BOT_CHECK_TIME` (default
+08:00 WIB; bila PC baru menyala setelahnya, dijalankan saat itu juga) bot login ke Portainer (read-only) dan memeriksa semua
+container di `PORTAINER_STACKS`. Kirim `/cek` ke bot untuk menjalankannya sekarang.
+Yang dilaporkan:
+
+- **Error mysqldump** pada run terakhir, per database (`Lost connection`, `command denied`, dll.).
+  `information_schema`/`performance_schema`/`sys` diabaikan (`BOT_IGNORE_DBS`) karena
+  selalu error dan bukan data nyata.
+- **Backup tidak berjalan:** tidak ada run baru dalam `BOT_STALE_HOURS` (30 jam) — kegagalan
+  senyap yang tidak terlihat sebagai error di log.
+- **Run tidak selesai** (dimulai tapi tidak ada `Backup End`) dan **container tidak running**.
+- Error dicari di **semua run sejak cek terakhir**, jadi kegagalan Sabtu/Minggu ikut
+  terlaporkan pada hari Senin (diberi tanggal run-nya).
+- Masalah yang sama berhari-hari diberi penanda "gagal N hari berturut-turut".
+- Bila semua sehat tetap dikirim ringkasan "✅ tidak ada masalah", jadi diam = bot mati.
+
+Tombol 🟢 Backup hanya muncul bila server MySQL itu (`DBHOST:DBPORT`) terdaftar di
+`inventory/hosts.yaml` (aktif, tidak dikomentari); selain itu hanya ⚪ Tunda / 🔴 Batal.
+Untuk mengaktifkannya pada server lain, tambahkan server itu ke inventory.
+
 ## Konfigurasi yang perlu diketahui
 
 - **`inventory/hosts.yaml`** — daftar database yang di-backup ada di
@@ -127,6 +200,7 @@ teleport-backup-ready.sh       # pemulihan token/cert Teleport (idempoten)
 teleport.cfg / teleport-docker.cfg
 provision/provision-semaphore.py   # bikin objek dashboard (idempoten)
 inventory/hosts.yaml           # target + daftar database
+bot/                           # bot Telegram (backup_bot.py, stdlib saja)
 playbook/backups/              # backup_mysql.yml, restore_mysql.yml, verify_backup.yml
 playbook/dashboard-ui/         # setup/service Semaphore (opsional, control_nodes)
 roles/                         # backup_mysql, restore_mysql, restore_verify_mysql, dll.

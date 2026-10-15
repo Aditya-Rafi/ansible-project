@@ -16,8 +16,57 @@
   register: _pull_result
   changed_when: "'Status: Downloaded newer image' in _pull_result.stdout"
 
+- name: reset catatan hasil backup & tentukan retensi
+  set_fact:
+    _retention_days: "{{ (backup_retention_days | default('') | string | trim) or mysql_backup_retention_days }}"
+    _backup_ok: []
+    _backup_failed: []
+    _only_ports: "{{ (backup_ports | default('') | string).split(',') | map('trim') | reject('equalto', '') | list }}"
+
+# Satu DB gagal TIDAK menghentikan DB lain; kegagalan dikumpulkan dan
+# dilaporkan di ringkasan akhir.
 - name: Process backup for each MySQL instance
   include_tasks: backup_instance.yml
   loop: "{{ mysql_instances }}"
   loop_control:
     loop_var: _instance
+    label: "port {{ _instance.port }}"
+  when: _only_ports | length == 0 or (_instance.port | string) in _only_ports
+
+- name: Hapus backup lama (retensi)
+  include_tasks: retention.yml
+  when: _retention_days | int > 0
+
+- name: Ringkasan backup
+  debug:
+    msg: >-
+      {{ [inventory_hostname ~ ': ' ~ (_backup_ok | length | string) ~ ' DB berhasil, '
+          ~ (_backup_failed | length | string) ~ ' gagal.']
+         + (_backup_ok | map(attribute='db') | map('regex_replace', '^', '✔ ') | list)
+         + (_backup_failed | map(attribute='db') | map('regex_replace', '^', '✘ ') | list) }}
+
+# Laporan ke bot Telegram (lihat bot/). Dikirim dari controller; kegagalan
+# kirim tidak boleh menggagalkan backup. Kosong/tidak di-set = nonaktif.
+- name: Kirim laporan kegagalan ke bot Telegram
+  delegate_to: localhost
+  become: false
+  uri:
+    url: "{{ backup_bot_url }}/event"
+    method: POST
+    body_format: json
+    body:
+      host: "{{ inventory_hostname }}"
+      failed: "{{ _backup_failed }}"
+    timeout: 10
+  failed_when: false
+  when:
+    - _backup_failed | length > 0
+    - (backup_bot_url | default('')) | length > 0
+
+- name: Tandai run GAGAL bila ada DB yang gagal di-backup
+  fail:
+    msg: >-
+      {{ _backup_failed | length }} DB gagal di-backup:
+      {{ _backup_failed | map(attribute='db') | join(', ') }}.
+      DB lain sudah ter-backup (lihat ringkasan di atas).
+  when: _backup_failed | length > 0

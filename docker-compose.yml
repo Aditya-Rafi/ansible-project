@@ -57,7 +57,28 @@ services:
       - semaphore
     command: python /provision/provision-semaphore.py
 
+  # Bot Telegram: terima laporan DB gagal dari playbook, kirim tombol
+  # Backup / Tunda / Batal, lalu jalankan ulang template di Semaphore.
+  # Tanpa port publik (long-polling keluar ke Telegram).
+  backup-bot:
+    image: python:3-alpine
+    container_name: backup-bot
+    env_file:
+      - .env.semaphore
+    environment:
+      SEMAPHORE_URL: http://semaphore:3000/api
+      STATE_FILE: /data/state.json
+    volumes:
+      - ./bot:/bot:ro
+      - ./inventory/hosts.yaml:/inventory/hosts.yaml:ro   # peta server -> tombol Backup
+      - bot_data:/data
+    depends_on:
+      - semaphore
+    restart: unless-stopped
+    command: python -u /bot/backup_bot.py
+
 volumes:
+  bot_data:
   semaphore_data:
   semaphore_db:
   teleport_id:

@@ -14,6 +14,15 @@
          if _via_teleport
          else 'LANGSUNG ' ~ _conn_host ~ ':' ~ _conn_port ~ ' (user ' ~ _conn_user ~ ')' }}
 
+- name: "tentukan spesifikasi database (port {{ _instance.port }})"
+  set_fact:
+    _db_spec: >-
+      {{ (backup_databases | default('') | string | trim)
+         or (_instance.databases | default('all')) }}
+    _db_exclude_raw: >-
+      {{ (backup_exclude_databases | default('') | string | trim)
+         or (_instance.exclude_databases | default('')) }}
+
 - name: "discover semua DB non-system dari port {{ _instance.port }}"
   shell: |
     mysql -h {{ _conn_host | quote }} -P {{ _conn_port | string | quote }} \
@@ -25,22 +34,26 @@
     MYSQL_PWD: "{{ _conn_password }}"
   register: _discovered
   changed_when: false
-  when: _instance.databases | string | lower == 'all'
+  when: _db_spec is string and (_db_spec | trim | lower) == 'all'
 
 - name: "set DB list dari auto-discovery (port {{ _instance.port }})"
   set_fact:
     _instance_dbs: "{{ _discovered.stdout_lines | select('string') | reject('equalto', '') | list }}"
-  when: _instance.databases | string | lower == 'all'
+  when: _db_spec is string and (_db_spec | trim | lower) == 'all'
 
-- name: "set DB list dari inventory (port {{ _instance.port }})"
+- name: "set DB list dari inventory/override (port {{ _instance.port }})"
   set_fact:
     _instance_dbs: >-
-      {{
-        (_instance.databases.split(',') | map('trim') | reject('equalto', '') | list)
-        if (_instance.databases is string and ',' in _instance.databases)
-        else ([_instance.databases | trim])
-      }}
-  when: _instance.databases | string | lower != 'all'
+      {{ (_db_spec.split(',') if _db_spec is string else _db_spec)
+         | map('trim') | reject('equalto', '') | list }}
+  when: not (_db_spec is string and (_db_spec | trim | lower) == 'all')
+
+- name: "buang database yang dikecualikan (port {{ _instance.port }})"
+  set_fact:
+    _instance_dbs: >-
+      {{ _instance_dbs | difference(
+           (_db_exclude_raw.split(',') if _db_exclude_raw is string else _db_exclude_raw)
+           | map('trim') | reject('equalto', '') | list) }}
 
 - name: "databases yang akan di-backup pada port {{ _instance.port }}"
   debug:
@@ -69,19 +82,3 @@
   loop: "{{ _instance_dbs }}"
   loop_control:
     loop_var: _db
-
-- name: "cari backup lama (>7 hari) untuk port {{ _instance.port }}"
-  become: true
-  find:
-    paths: "{{ mysql_backup_dir }}"
-    patterns: "backup-*-{{ _instance.port }}-*.sql"
-    age: 7d
-    recurse: false
-  register: _old_backups
-
-- name: "hapus backup lama untuk port {{ _instance.port }}"
-  become: true
-  file:
-    path: "{{ item.path }}"
-    state: absent
-  loop: "{{ _old_backups.files }}"

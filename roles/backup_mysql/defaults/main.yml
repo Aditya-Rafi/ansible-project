@@ -7,3 +7,34 @@ mysql_backup_dir: "/opt/backups/mysql/{{ inventory_hostname }}"
 # Menyamakan perilaku dengan setup automysqlbackup lama (MAX_ALLOWED_PACKET).
 # mysqldump gagal di tengah dump bila ada row/blob melebihi nilai ini.
 mysql_max_allowed_packet: "1024M"
+
+# ── Retensi ────────────────────────────────────────────────────────────────
+# Setiap run, SEMUA file backup-* (.sql, .sql.sha256, .sql.err) di
+# mysql_backup_dir yang lebih tua dari N hari dihapus — tanpa peduli apakah
+# DB tersebut punya backup yang lebih baru atau tidak. 0 = retensi dimatikan.
+# Override sekali jalan: -e backup_retention_days=3
+mysql_backup_retention_days: 5
+
+# ── Pemilihan database ─────────────────────────────────────────────────────
+# Default diambil dari `databases:` pada mysql_instances di inventory
+# ("all", "db1,db2", atau list YAML). Override sekali jalan tanpa edit
+# inventory:
+#   -e backup_databases=all
+#   -e backup_databases=db1,db2
+# Kecualikan DB dari "all":
+#   inventory   → exclude_databases: "db_besar,db_log"  (per instance)
+#   sekali jalan → -e backup_exclude_databases=db_besar
+# Batasi server: --limit nama-host
+
+# ── Ketahanan ──────────────────────────────────────────────────────────────
+# Dump yang terputus (error 2013 "Lost connection") diulang otomatis.
+mysql_backup_retries: 2
+mysql_backup_retry_delay: 30
+
+# Argumen tambahan mysqldump bila perlu, mis. "--compress".
+mysql_dump_extra_args: ""
+
+# Pembatas port (dipakai bot saat backup ulang): -e backup_ports=3306
+# URL bot Telegram. Di Semaphore di-set otomatis oleh provisioner
+# (http://backup-bot:8080). Kosong = notifikasi nonaktif.
+backup_bot_url: ""
